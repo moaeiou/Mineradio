@@ -60,8 +60,17 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 const tls = require("tls");
+const os = require("os");
 const { once } = require("events");
 const { fileURLToPath } = require("url");
+const {
+  updateTarget,
+  updateMetadataFileName,
+  defaultUpdateArtifactName,
+  pickUpdateAsset,
+  isUpdateTargetCompatible,
+  updateAssetScore,
+} = require("./runtime-platform");
 const {
   analyzePodcastDjStream,
   analyzePodcastDjIntro,
@@ -205,7 +214,12 @@ const UPDATE_PATCH_BACKUP_DIR =
   process.env.MINERADIO_PATCH_BACKUP_DIR ||
   path.join(UPDATE_WORK_DIR, "backups", "patches");
 const BEATMAP_CACHE_DIR =
-  process.env.MINERADIO_BEAT_CACHE_DIR || "D:\\MineradioCache\\beatmaps";
+  process.env.MINERADIO_BEAT_CACHE_DIR ||
+  path.join(
+    process.env.XDG_CACHE_HOME || path.join(os.homedir(), ".cache"),
+    "Mineradio",
+    "beatmaps",
+  );
 const CUEFIELD_FEEDBACK_FILE =
   process.env.CUEFIELD_FEEDBACK_FILE ||
   path.join(__dirname, "data", "cuefield-feedback.jsonl");
@@ -217,6 +231,7 @@ const APP_PACKAGE = readPackageInfo();
 const APP_VERSION =
   process.env.MINERADIO_VERSION || APP_PACKAGE.version || "2.0.2";
 const UPDATE_CONFIG = readUpdateConfig(APP_PACKAGE);
+const UPDATE_TARGET = updateTarget();
 const PATCH_MAX_BYTES = 12 * 1024 * 1024;
 const PATCH_ALLOWED_ROOTS = new Set(["public", "desktop", "build"]);
 const qishuiAudioDecryptor = new TrackDecryptor();
@@ -782,10 +797,7 @@ function extractReleaseNotes(body) {
 }
 function pickReleaseAsset(assets) {
   const list = Array.isArray(assets) ? assets : [];
-  const preferred =
-    list.find((a) => /\.(exe|msi)$/i.test((a && a.name) || "")) ||
-    list.find((a) => /\.(zip|7z)$/i.test((a && a.name) || "")) ||
-    list[0];
+  const preferred = pickUpdateAsset(list, UPDATE_TARGET);
   if (!preferred) return null;
   const digest = assetDigestInfo(preferred);
   const candidates = uniqueDownloadCandidates(
@@ -811,10 +823,18 @@ function pickPatchAsset(assets, currentVersion, latestVersion) {
   const list = Array.isArray(assets) ? assets : [];
   const current = normalizeVersion(currentVersion || APP_VERSION);
   const latest = normalizeVersion(latestVersion || "");
+  const patchCandidates = list.filter((a) => {
+    const name = String((a && a.name) || "");
+    if (!/\.(patch\.json|patch|json)$/i.test(name)) return false;
+    // Patch names may be platform-neutral. If they carry a platform marker,
+    // reuse the installer matcher by temporarily giving them a zip extension.
+    return Number.isFinite(
+      updateAssetScore({ name: name + ".zip" }, UPDATE_TARGET),
+    );
+  });
   const preferred =
-    list.find((a) => {
+    patchCandidates.find((a) => {
       const name = String((a && a.name) || "");
-      if (!/\.(patch\.json|patch|json)$/i.test(name)) return false;
       const versions = patchAssetVersions(name);
       if (latest)
         return (
@@ -822,13 +842,14 @@ function pickPatchAsset(assets, currentVersion, latestVersion) {
         );
       return versions[0] === current && name.toLowerCase().includes("patch");
     }) ||
-    list.find((a) => {
+    patchCandidates.find((a) => {
       const name = String((a && a.name) || "");
-      if (!/\.(patch\.json|patch|json)$/i.test(name)) return false;
       const versions = patchAssetVersions(name);
       return versions[0] === current && name.toLowerCase().includes("patch");
     }) ||
-    list.find((a) => /\.(patch\.json|patch)$/i.test((a && a.name) || ""));
+    patchCandidates.find((a) =>
+      /\.(patch\.json|patch)$/i.test((a && a.name) || ""),
+    );
   if (!preferred) return null;
   const digest = assetDigestInfo(preferred);
   const candidates = uniqueDownloadCandidates(
@@ -855,7 +876,11 @@ function updateAssetNameFromUrl(value) {
 function normalizeManifestUpdateInfo(data) {
   data = data || {};
   const release = data.release || {};
-  const asset = release.asset || data.asset || {};
+  const manifestAssets = []
+    .concat(Array.isArray(release.assets) ? release.assets : [])
+    .concat(Array.isArray(data.assets) ? data.assets : []);
+  const selectedManifestAsset = pickUpdateAsset(manifestAssets, UPDATE_TARGET);
+  const asset = selectedManifestAsset || release.asset || data.asset || {};
   const latestVersion =
     normalizeVersion(
       data.latestVersion ||
@@ -866,13 +891,30 @@ function normalizeManifestUpdateInfo(data) {
         release.name ||
         APP_VERSION,
     ) || APP_VERSION;
-  const downloadUrl =
-    release.downloadUrl ||
-    data.downloadUrl ||
-    asset.downloadUrl ||
-    asset.browser_download_url ||
-    "";
-  const patch = release.patch || data.patch || null;
+  const proposedDownloadUrl = selectedManifestAsset
+    ? asset.downloadUrl || asset.browser_download_url || asset.url || ""
+    : release.downloadUrl ||
+      data.downloadUrl ||
+      asset.downloadUrl ||
+      asset.browser_download_url ||
+      asset.url ||
+      "";
+  const assetName =
+    asset.name || asset.fileName || updateAssetNameFromUrl(proposedDownloadUrl);
+  const assetLooksNamed = /\.[a-z0-9]{2,12}$/i.test(assetName);
+  const assetCompatible =
+    !assetLooksNamed ||
+    Number.isFinite(updateAssetScore({ name: assetName }, UPDATE_TARGET));
+  const downloadUrl = assetCompatible ? proposedDownloadUrl : "";
+  const proposedPatch = release.patch || data.patch || null;
+  const patchName = proposedPatch
+    ? proposedPatch.name ||
+      updateAssetNameFromUrl(proposedPatch.downloadUrl || "")
+    : "";
+  const patch =
+    proposedPatch && isUpdateTargetCompatible(patchName, UPDATE_TARGET)
+      ? proposedPatch
+      : null;
   const assetUrls = [downloadUrl].concat(
     Array.isArray(asset.downloadUrls) ? asset.downloadUrls : [],
   );
@@ -887,7 +929,7 @@ function normalizeManifestUpdateInfo(data) {
           name:
             patch.name ||
             updateAssetNameFromUrl(patch.downloadUrl) ||
-            `Mineradio-${APP_VERSION}→${latestVersion}.patch.json`,
+            `Mineradio-${APP_VERSION}→${latestVersion}-${UPDATE_TARGET.platform}-${UPDATE_TARGET.arch}.patch.json`,
           size: Number(patch.size || 0) || 0,
           contentType:
             patch.contentType || patch.content_type || "application/json",
@@ -910,7 +952,7 @@ function normalizeManifestUpdateInfo(data) {
         name:
           asset.name ||
           updateAssetNameFromUrl(downloadUrl) ||
-          `Mineradio-${latestVersion}-Setup.exe`,
+          defaultUpdateArtifactName(latestVersion, UPDATE_TARGET),
         size: Number(asset.size || 0) || 0,
         contentType: asset.contentType || asset.content_type || "",
         downloadUrl,
@@ -931,6 +973,7 @@ function normalizeManifestUpdateInfo(data) {
         : compareVersions(latestVersion, APP_VERSION) > 0,
     currentVersion: APP_VERSION,
     latestVersion,
+    target: UPDATE_TARGET,
     release: {
       tagName:
         release.tagName ||
@@ -986,15 +1029,15 @@ function beatCacheRootInfo() {
   const dir = path.resolve(BEATMAP_CACHE_DIR);
   const root = path.parse(dir).root;
   const drive = root ? root.replace(/[\\\/]+$/, "").toUpperCase() : "";
-  const allowed = !!root && !/^C:$/i.test(drive);
+  const allowed = !!root;
   const available = allowed && fs.existsSync(root);
   return { dir, root, drive, allowed, available };
 }
 function ensureBeatMapCacheDir() {
   const info = beatCacheRootInfo();
   if (!info.allowed) {
-    const err = new Error("BEAT_CACHE_ON_C_DRIVE_DISABLED");
-    err.code = "BEAT_CACHE_ON_C_DRIVE_DISABLED";
+    const err = new Error("BEAT_CACHE_ROOT_INVALID");
+    err.code = "BEAT_CACHE_ROOT_INVALID";
     err.info = info;
     throw err;
   }
@@ -1065,6 +1108,7 @@ function localUpdateFallback(reason, opts) {
     updateAvailable: false,
     currentVersion: APP_VERSION,
     latestVersion: APP_VERSION,
+    target: UPDATE_TARGET,
     release: {
       tagName: "v" + APP_VERSION,
       name: "Mineradio v" + APP_VERSION,
@@ -1260,7 +1304,7 @@ function parseLatestYmlUpdateInfo(text, reason) {
   const assetPath =
     yamlScalar(text, "path") ||
     yamlScalar(text, "url") ||
-    `Mineradio-${latestVersion}-Setup.exe`;
+    defaultUpdateArtifactName(latestVersion, UPDATE_TARGET);
   const sha512 = normalizeDigest(yamlScalar(text, "sha512"), "sha512");
   const size = Number(yamlScalar(text, "size") || 0) || 0;
   const releaseDate = yamlScalar(text, "releaseDate");
@@ -1281,6 +1325,7 @@ function parseLatestYmlUpdateInfo(text, reason) {
     updateAvailable: compareVersions(latestVersion, APP_VERSION) > 0,
     currentVersion: APP_VERSION,
     latestVersion,
+    target: UPDATE_TARGET,
     release: {
       tagName: "v" + latestVersion,
       name: "Mineradio v" + latestVersion,
@@ -1305,7 +1350,8 @@ function parseLatestYmlUpdateInfo(text, reason) {
 async function fetchLatestYmlUpdateInfo(reason) {
   if (!UPDATE_CONFIG.configured || UPDATE_CONFIG.provider !== "github")
     throw updateError("UPDATE_REPOSITORY_NOT_CONFIGURED");
-  const latestYmlUrl = `https://github.com/${encodeURIComponent(UPDATE_CONFIG.owner)}/${encodeURIComponent(UPDATE_CONFIG.repo)}/releases/latest/download/latest.yml`;
+  const metadataFile = updateMetadataFileName(UPDATE_TARGET);
+  const latestYmlUrl = `https://github.com/${encodeURIComponent(UPDATE_CONFIG.owner)}/${encodeURIComponent(UPDATE_CONFIG.repo)}/releases/latest/download/${metadataFile}`;
   const candidates = uniqueDownloadCandidates(latestYmlUrl);
   const result = await fetchTextFromCandidates(candidates, 6500);
   return parseLatestYmlUpdateInfo(result.text, reason);
@@ -1350,6 +1396,7 @@ async function fetchLatestUpdateInfo() {
       updateAvailable: compareVersions(latestVersion, APP_VERSION) > 0,
       currentVersion: APP_VERSION,
       latestVersion,
+      target: UPDATE_TARGET,
       release: {
         tagName: data.tag_name || "v" + latestVersion,
         name: data.name || "Mineradio v" + latestVersion,
@@ -1384,13 +1431,16 @@ async function fetchLatestUpdateInfo() {
 }
 function safeUpdateFileName(name, version) {
   const raw =
-    String(name || "").trim() || `Mineradio-${version || APP_VERSION}.exe`;
+    String(name || "").trim() ||
+    defaultUpdateArtifactName(version || APP_VERSION, UPDATE_TARGET);
   const cleaned = raw
     .replace(/[<>:"/\\|?*\x00-\x1F]/g, "-")
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, 160);
-  return cleaned || `Mineradio-${version || APP_VERSION}.exe`;
+  return (
+    cleaned || defaultUpdateArtifactName(version || APP_VERSION, UPDATE_TARGET)
+  );
 }
 function publicUpdateJob(job) {
   if (!job) return { ok: false, error: "UPDATE_JOB_NOT_FOUND" };
@@ -2171,7 +2221,7 @@ function startUpdatePatchJob(info) {
     mode: "patch",
     fileName:
       patch.name ||
-      safeUpdateFileName("", version).replace(/\.exe$/i, ".patch.json"),
+      `Mineradio-${APP_VERSION}→${version}-${UPDATE_TARGET.platform}-${UPDATE_TARGET.arch}.patch.json`,
     filePath: "",
     version,
     downloadUrl,

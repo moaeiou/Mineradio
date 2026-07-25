@@ -1,7 +1,7 @@
 {
   "name": "Mineradio",
   "productName": "Mineradio",
-  "version": "2026.2.3",
+  "version": "2026.2.4",
   "description": "一款以电影镜头、粒子视觉和歌词舞台为核心的沉浸式音乐播放器。",
   "author": "Mineradio",
   "license": "GPL-3.0-only",
@@ -37,6 +37,7 @@
       "build/**/*",
       "cuefield/**/*",
       "server.js",
+      "runtime-platform.js",
       "*-api.js",
       "qishui-audio-decryptor/**/*",
       "dj-analyzer.js",
@@ -117,6 +118,7 @@
       "preferMirrors": true,
       "mirrors": [
         "https://gh.llkk.cc/",
+        "https://gh-proxy.com/",
         "https://ghfast.top/",
         "https://ghproxy.link/"
       ]
@@ -135,7 +137,7 @@
   },
   "devDependencies": {
     "electron": "^43.2.0",
-    "electron-builder": "^26.15.3",
+    "electron-builder": "^26.15.7",
     "rcedit": "^5.0.2"
   },
   "packageManager": "pnpm@11.17.0+sha512.cca3cea332ad254bb84145f966d19f4879615210346fc92c79a047f23a0d7b3cca3c3792f0076ba1f1831d277efbcf0a9119b31a9a60eca7fb3d6231f331ef72"

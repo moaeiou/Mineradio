@@ -2413,16 +2413,8 @@ function toggleFullscreen() {
     applyState({});
   }
   document.addEventListener("fullscreenchange", function () {
-    var wasDocumentFullscreen = documentFullscreenActive;
     documentFullscreenActive = !!document.fullscreenElement;
     desktopWindowState.isHtmlFullScreen = documentFullscreenActive;
-    if (
-      wasDocumentFullscreen &&
-      !documentFullscreenActive &&
-      typeof api.exitFullscreenWindowed === "function"
-    ) {
-      api.exitFullscreenWindowed();
-    }
     applyState({});
   });
 })();

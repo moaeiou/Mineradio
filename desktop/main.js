@@ -153,6 +153,10 @@ const APP_USER_MODEL_ID =
   (APP_PACKAGE_INFO.build && APP_PACKAGE_INFO.build.appId) ||
   "com.mineradio.desktop";
 const APP_ICON_ICO = path.join(__dirname, "..", "build", "icon.ico");
+const APP_ICON_PATH =
+  process.platform === "win32"
+    ? APP_ICON_ICO
+    : path.join(__dirname, "..", "build", "icon.png");
 const CURRENT_FX_AUTOSAVE_FILE = "current-fx-autosave.json";
 const CURRENT_FX_AUTOSAVE_MAX_BYTES = 12 * 1024 * 1024;
 const STARTUP_ERROR_LOG_FILE = "startup-error.log";
@@ -379,7 +383,7 @@ function cacheSettingsConfigPath() {
 
 function defaultCacheRootPath() {
   const dDrive = "D:\\";
-  return fs.existsSync(dDrive)
+  return process.platform === "win32" && fs.existsSync(dDrive)
     ? path.join(dDrive, "MineradioCache")
     : path.join(app.getPath("userData"), "cache");
 }
@@ -2548,7 +2552,10 @@ function getWindowState(win) {
 
 function setMainWindowFullscreenResizeGuard(win, fullscreen) {
   if (!win || win.isDestroyed()) return;
-  if (process.platform === "linux") return;
+  // This lock only works around resize storms produced by some Windows
+  // compositors. On macOS, making the window non-resizable also changes its
+  // native fullscreen eligibility and can make setFullScreen(true) a no-op.
+  if (process.platform !== "win32") return;
   const shouldResize = !fullscreen;
   try {
     if (
@@ -2869,10 +2876,9 @@ function focusMainWindow() {
 }
 
 function createOrUpdateTray() {
-  if (process.platform !== "win32" && process.platform !== "linux") return;
   if (!tray) {
     try {
-      tray = new Tray(APP_ICON_ICO);
+      tray = new Tray(APP_ICON_PATH);
       tray.setToolTip(APP_NAME);
       tray.on("click", () => focusMainWindow());
       tray.on("double-click", () => focusMainWindow());
@@ -3848,7 +3854,7 @@ async function openNeteaseMusicLoginWindow(owner) {
       autoHideMenuBar: true,
       title: "网易云音乐登录",
       backgroundColor: "#111111",
-      icon: APP_ICON_ICO,
+      ...(process.platform === "darwin" ? {} : { icon: APP_ICON_PATH }),
       webPreferences: {
         partition: NETEASE_LOGIN_PARTITION,
         contextIsolation: true,
@@ -3971,7 +3977,7 @@ async function openQQMusicLoginWindow(owner, options) {
       autoHideMenuBar: true,
       title: "QQ 音乐登录",
       backgroundColor: "#111111",
-      icon: APP_ICON_ICO,
+      ...(process.platform === "darwin" ? {} : { icon: APP_ICON_PATH }),
       webPreferences: {
         partition: QQ_LOGIN_PARTITION,
         contextIsolation: true,
@@ -4099,7 +4105,7 @@ async function openKugouMusicLoginWindow(owner) {
       autoHideMenuBar: true,
       title: "酷狗音乐登录",
       backgroundColor: "#111111",
-      icon: APP_ICON_ICO,
+      ...(process.platform === "darwin" ? {} : { icon: APP_ICON_PATH }),
       webPreferences: {
         partition: KUGOU_LOGIN_PARTITION,
         contextIsolation: true,
@@ -4249,7 +4255,7 @@ async function openQishuiOfficialWebLoginWindow(owner, config) {
       autoHideMenuBar: true,
       title: "汽水音乐扫码登录",
       backgroundColor: "#10110f",
-      icon: APP_ICON_ICO,
+      ...(process.platform === "darwin" ? {} : { icon: APP_ICON_PATH }),
       webPreferences: {
         partition: QISHUI_LOGIN_PARTITION,
         contextIsolation: true,
@@ -4552,7 +4558,7 @@ async function openQishuiOfficialWebLoginWindowLegacy(owner, config) {
       autoHideMenuBar: true,
       title: "汽水音乐官方窗口",
       backgroundColor: "#111111",
-      icon: APP_ICON_ICO,
+      ...(process.platform === "darwin" ? {} : { icon: APP_ICON_PATH }),
       webPreferences: {
         partition: QISHUI_LOGIN_PARTITION,
         contextIsolation: true,
@@ -5194,7 +5200,7 @@ async function openSpotifyMusicLoginWindow(owner) {
       autoHideMenuBar: true,
       title: "Spotify 授权",
       backgroundColor: "#101414",
-      icon: APP_ICON_ICO,
+      ...(process.platform === "darwin" ? {} : { icon: APP_ICON_PATH }),
       webPreferences: {
         partition: SPOTIFY_LOGIN_PARTITION,
         contextIsolation: true,
@@ -5245,15 +5251,13 @@ async function openSpotifyMusicLoginWindow(owner) {
           message: "Spotify 授权窗口已关闭。",
         });
     });
-    loginWindow
-      .loadURL(authUrl)
-      .catch((e) =>
-        finish({
-          ok: false,
-          provider: "spotify",
-          error: e.message || "Spotify 授权页打开失败",
-        }),
-      );
+    loginWindow.loadURL(authUrl).catch((e) =>
+      finish({
+        ok: false,
+        provider: "spotify",
+        error: e.message || "Spotify 授权页打开失败",
+      }),
+    );
   });
 }
 
@@ -5517,16 +5521,51 @@ function toggleFullscreen(win) {
   windowFullscreenActive = true;
   ensureMainWindowInsideDisplay(win);
   setMainWindowFullscreenResizeGuard(win, true);
-  win.setFullScreen(true);
+  try {
+    if (
+      typeof win.isFullScreenable === "function" &&
+      typeof win.setFullScreenable === "function" &&
+      !win.isFullScreenable()
+    ) {
+      win.setFullScreenable(true);
+    }
+    win.setFullScreen(true);
+  } catch (error) {
+    windowFullscreenActive = false;
+    setMainWindowFullscreenResizeGuard(win, false);
+    sendWindowState(win);
+    console.warn(
+      "[WindowFullscreen] enter failed:",
+      (error && error.message) || error,
+    );
+    return;
+  }
   sendWindowState(win);
   clearTimeout(fullscreenTransitionTimer);
-  fullscreenTransitionTimer = setTimeout(() => {
-    fullscreenTransitionTimer = null;
-    if (!win.isDestroyed() && !win.isFullScreen()) {
-      windowFullscreenActive = false;
-      sendWindowState(win);
-    }
-  }, 1200);
+  // Native fullscreen is asynchronous on macOS. The native event remains the
+  // authority; this long watchdog only recovers from a transition that never
+  // emits an event instead of racing the normal Space animation.
+  fullscreenTransitionTimer = setTimeout(
+    () => {
+      fullscreenTransitionTimer = null;
+      if (!win.isDestroyed() && !win.isFullScreen()) {
+        windowFullscreenActive = false;
+        setMainWindowFullscreenResizeGuard(win, false);
+        sendWindowState(win);
+      }
+    },
+    process.platform === "darwin" ? 10000 : 3000,
+  );
+}
+
+function toggleMaximize(win) {
+  if (!win || win.isDestroyed()) return;
+  // Maximizing while a native fullscreen transition is active produces
+  // conflicting window operations, especially on macOS Spaces.
+  if (win.isFullScreen() || windowFullscreenActive) return;
+  if (win.isMaximized()) win.unmaximize();
+  else win.maximize();
+  sendWindowState(win);
 }
 
 function overlayUrl(page) {
@@ -6012,7 +6051,7 @@ ipcMain.handle("desktop-window-toggle-maximize", (event) => {
   ) {
     return getWindowState(win);
   }
-  toggleFullscreen(win);
+  toggleMaximize(win);
   return getWindowState(win);
 });
 
@@ -7897,6 +7936,7 @@ async function createWindowOnce() {
     show: false,
     frame: false,
     fullscreen: false,
+    fullscreenable: true,
     resizable: true,
     transparent: true,
     opacity: process.env.MINERADIO_STARTUP_QA_HIDDEN === "1" ? 0 : 1,
@@ -7904,7 +7944,7 @@ async function createWindowOnce() {
     hasShadow: true,
     autoHideMenuBar: true,
     title: APP_NAME,
-    icon: APP_ICON_ICO,
+    ...(process.platform === "darwin" ? {} : { icon: APP_ICON_PATH }),
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
