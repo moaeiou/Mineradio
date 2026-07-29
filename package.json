@@ -21,7 +21,7 @@
     "build:windows:dir": "electron-builder --win dir"
   },
   "build": {
-    "appId": "com.mineradio.desktop",
+    "appId": "mo.mineradio",
     "productName": "Mineradio",
     "directories": {
       "output": "dist",
