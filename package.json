@@ -1,7 +1,7 @@
 {
   "name": "Mineradio",
   "productName": "Mineradio",
-  "version": "2026.2.5",
+  "version": "2026.2.6",
   "description": "一款以电影镜头、粒子视觉和歌词舞台为核心的沉浸式音乐播放器。",
   "author": "Mineradio",
   "license": "GPL-3.0-only",
@@ -15,10 +15,10 @@
     "build:linux:AppImage": "electron-builder --linux AppImage",
     "build:linux:deb": "electron-builder --linux deb",
     "build:linux:dir": "electron-builder --linux dir",
-    "build:windows": "electron-builder --win nsis",
     "build:macos": "electron-builder --mac dmg",
-    "build:windows:dir": "electron-builder --win dir",
-    "build:macos:dir": "electron-builder --mac dir"
+    "build:macos:dir": "electron-builder --mac dir",
+    "build:windows": "electron-builder --win nsis",
+    "build:windows:dir": "electron-builder --win dir"
   },
   "build": {
     "appId": "com.mineradio.desktop",
@@ -41,6 +41,9 @@
       "*-api.js",
       "qishui-audio-decryptor/**/*",
       "dj-analyzer.js",
+      "LICENSE",
+      "NOTICE.md",
+      "docs/THIRD_PARTY_PORTS.md",
       "package.json",
       "!desktop/wallpaper-preload.js",
       "!public/wallpaper.html",

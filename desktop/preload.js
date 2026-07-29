@@ -11,6 +11,8 @@ contextBridge.exposeInMainWorld("desktopWindow", {
     ipcRenderer.invoke("desktop-window-exit-fullscreen-windowed"),
   getState: () => ipcRenderer.invoke("desktop-window-get-state"),
   getGpuDiagnostics: () => ipcRenderer.invoke("mineradio-get-gpu-diagnostics"),
+  reportGpuBackendStatus: (payload) =>
+    ipcRenderer.send("mineradio-gpu-backend-status", payload || {}),
   getMemorySnapshot: () => ipcRenderer.invoke("mineradio-memory-get-snapshot"),
   configureMemoryReduct: (payload) =>
     ipcRenderer.invoke("mineradio-memory-configure-auto", payload || {}),

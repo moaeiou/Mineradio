@@ -26,6 +26,20 @@ const {
 const { WallpaperEngineRuntime } = require("./wallpaper-engine-runtime");
 const { FullDesktopModeRuntime } = require("./full-desktop-mode-runtime");
 const {
+  gpuBackendRuntimeKey,
+  readGpuBackendState,
+  writeGpuBackendState,
+  selectGpuBackend,
+  gpuBackendSwitches,
+  gpuInfoReportsVulkan,
+} = require("./gpu-backend");
+const {
+  normalizeListenHost,
+  resolveListenHost,
+  connectHostForListenHost,
+  formatListenHostForUrl,
+} = require("./listen-host");
+const {
   LoginEasterEggGate,
   LOGIN_EASTER_EGG_GATE_VERSION,
   LOGIN_EASTER_EGG_STATE_FILE,
@@ -68,6 +82,11 @@ let desktopLyricsHotBounds = null;
 let desktopLyricsLastMiddleAt = 0;
 let htmlFullscreenActive = false;
 let windowFullscreenActive = false;
+let fullscreenTransitionTimer = null;
+let gpuBackendWatchdogTimer = null;
+let gpuBackendFallbackStarted = false;
+let gpuBackendRendererReady = false;
+let gpuBackendValidationInFlight = false;
 let mainWindowStateTimer = null;
 let appMemoryTrimTimer = null;
 let appMemoryTrimInFlight = false;
@@ -134,6 +153,17 @@ const APP_USER_MODEL_ID =
   (APP_PACKAGE_INFO.build && APP_PACKAGE_INFO.build.appId) ||
   "com.mineradio.desktop";
 const APP_ICON_ICO = path.join(__dirname, "..", "build", "icon.ico");
+const APP_ICON_PATH =
+  process.platform === "win32"
+    ? APP_ICON_ICO
+    : path.join(__dirname, "..", "build", "icon.png");
+const LOCAL_SERVER_LISTEN = resolveListenHost({
+  argv: process.argv,
+  env: process.env,
+});
+const LOCAL_SERVER_HOST = LOCAL_SERVER_LISTEN.host;
+const LOCAL_SERVER_CONNECT_HOST = connectHostForListenHost(LOCAL_SERVER_HOST);
+const LOCAL_SERVER_URL_HOST = formatListenHostForUrl(LOCAL_SERVER_CONNECT_HOST);
 const CURRENT_FX_AUTOSAVE_FILE = "current-fx-autosave.json";
 const CURRENT_FX_AUTOSAVE_MAX_BYTES = 12 * 1024 * 1024;
 const STARTUP_ERROR_LOG_FILE = "startup-error.log";
@@ -185,6 +215,21 @@ const STABLE_USER_DATA_PATH =
   STARTUP_QA_USER_DATA_PATH || path.join(app.getPath("appData"), APP_NAME);
 fs.mkdirSync(STABLE_USER_DATA_PATH, { recursive: true });
 app.setPath("userData", STABLE_USER_DATA_PATH);
+const GPU_BACKEND_STATE_FILE = path.join(
+  STABLE_USER_DATA_PATH,
+  "gpu-backend-state.json",
+);
+const GPU_BACKEND_RUNTIME_KEY = gpuBackendRuntimeKey({
+  appVersion: APP_PACKAGE_INFO.version,
+  electronVersion: process.versions.electron,
+  platform: process.platform,
+  arch: process.arch,
+});
+const ACTIVE_GPU_BACKEND = selectGpuBackend({
+  platform: process.platform,
+  runtimeKey: GPU_BACKEND_RUNTIME_KEY,
+  state: readGpuBackendState(GPU_BACKEND_STATE_FILE),
+});
 const INITIAL_CACHE_SETTINGS = ensureCacheDirectories(readCacheSettings());
 const loginEasterEggGate = new LoginEasterEggGate({
   userDataPath: STABLE_USER_DATA_PATH,
@@ -371,7 +416,7 @@ function cacheSettingsConfigPath() {
 
 function defaultCacheRootPath() {
   const dDrive = "D:\\";
-  return fs.existsSync(dDrive)
+  return process.platform === "win32" && fs.existsSync(dDrive)
     ? path.join(dDrive, "MineradioCache")
     : path.join(app.getPath("userData"), "cache");
 }
@@ -608,8 +653,17 @@ const CHROMIUM_SAFE_PERFORMANCE_SWITCHES = [
   ["enable-oop-rasterization"],
   ["enable-zero-copy"],
   ["enable-accelerated-2d-canvas"],
-  ["use-angle", "d3d11"],
+  ...gpuBackendSwitches(ACTIVE_GPU_BACKEND.backend),
 ];
+if (
+  process.platform === "linux" &&
+  (process.env.XDG_SESSION_TYPE === "wayland" || process.env.WAYLAND_DISPLAY)
+) {
+  CHROMIUM_SAFE_PERFORMANCE_SWITCHES.push([
+    "disable-features",
+    "WaylandWpColorManagerV1",
+  ]);
+}
 const CHROMIUM_OPT_IN_PERFORMANCE_SWITCHES = [
   ["ignore-gpu-blocklist", null, "MINERADIO_IGNORE_GPU_BLOCKLIST"],
   ["force_high_performance_gpu", null, "MINERADIO_FORCE_HIGH_PERFORMANCE_GPU"],
@@ -716,7 +770,7 @@ function findOpenPort(startPort) {
         tester.close(() => resolve(port));
       });
 
-      tester.listen(port, "127.0.0.1");
+      tester.listen(port, LOCAL_SERVER_HOST);
     }
 
     tryPort(startPort);
@@ -825,7 +879,7 @@ function waitForLocalHttpReady(port, timeoutMs = STARTUP_HTTP_TIMEOUT_MS) {
         return;
       }
       activeRequest = http.get(
-        { host: "127.0.0.1", port, path: "/", timeout: 1200 },
+        { host: LOCAL_SERVER_CONNECT_HOST, port, path: "/", timeout: 1200 },
         (response) => {
           response.resume();
           activeRequest = null;
@@ -939,7 +993,8 @@ function isLocalAppUrl(value) {
     const u = new URL(String(value || ""));
     return (
       u.protocol === "http:" &&
-      u.hostname === "127.0.0.1" &&
+      normalizeListenHost(u.hostname) ===
+        normalizeListenHost(LOCAL_SERVER_CONNECT_HOST) &&
       Number(u.port || 0) === Number(mainServerPort || 0)
     );
   } catch (e) {
@@ -2514,6 +2569,10 @@ function getWindowState(win) {
 
 function setMainWindowFullscreenResizeGuard(win, fullscreen) {
   if (!win || win.isDestroyed()) return;
+  // This lock works around resize-cursor interference on Windows. On macOS,
+  // making a window non-resizable can also make it ineligible for native
+  // fullscreen, so never apply the workaround on other platforms.
+  if (process.platform !== "win32") return;
   const shouldResize = !fullscreen;
   try {
     if (
@@ -2559,9 +2618,129 @@ async function getGpuDiagnostics() {
         process.env.MINERADIO_FORCE_HIGH_PERFORMANCE_GPU === "1",
       keepBackgroundRendering:
         process.env.MINERADIO_KEEP_BACKGROUND_RENDERING === "1",
-      angle: "d3d11",
+      angle: ACTIVE_GPU_BACKEND.backend,
+      preferred: ACTIVE_GPU_BACKEND.preferred,
+      fallback: ACTIVE_GPU_BACKEND.fallback,
+      selectionSource: ACTIVE_GPU_BACKEND.source,
     },
   };
+}
+
+function clearGpuBackendWatchdog() {
+  if (!gpuBackendWatchdogTimer) return;
+  clearTimeout(gpuBackendWatchdogTimer);
+  gpuBackendWatchdogTimer = null;
+}
+
+async function recordGpuBackendSuccess(detail = {}) {
+  if (gpuBackendRendererReady || gpuBackendValidationInFlight) return;
+  gpuBackendValidationInFlight = true;
+  let completeInfo = null;
+  try {
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      completeInfo = await app.getGPUInfo("complete");
+      if (
+        ACTIVE_GPU_BACKEND.backend !== "vulkan" ||
+        gpuInfoReportsVulkan(completeInfo)
+      )
+        break;
+      const aux = (completeInfo && completeInfo.auxAttributes) || {};
+      const implementation = String(aux.glImplementationParts || "");
+      if (
+        aux.hardwareSupportsVulkan === false ||
+        (/angle\s*=/i.test(implementation) &&
+          !/angle\s*=\s*none/i.test(implementation))
+      )
+        break;
+      await new Promise((resolve) => setTimeout(resolve, 350));
+    }
+  } catch (error) {
+    if (ACTIVE_GPU_BACKEND.backend === "vulkan") {
+      gpuBackendValidationInFlight = false;
+      requestGpuBackendFallback("gpu-info-unavailable", error.message || error);
+      return;
+    }
+  }
+  if (
+    ACTIVE_GPU_BACKEND.backend === "vulkan" &&
+    !gpuInfoReportsVulkan(completeInfo)
+  ) {
+    gpuBackendValidationInFlight = false;
+    const aux = (completeInfo && completeInfo.auxAttributes) || {};
+    requestGpuBackendFallback(
+      "vulkan-not-active",
+      `${aux.glImplementationParts || "unknown"}; hardwareSupportsVulkan=${
+        aux.hardwareSupportsVulkan
+      }`,
+    );
+    return;
+  }
+  gpuBackendRendererReady = true;
+  gpuBackendValidationInFlight = false;
+  clearGpuBackendWatchdog();
+  const previousState = readGpuBackendState(GPU_BACKEND_STATE_FILE);
+  writeGpuBackendState(GPU_BACKEND_STATE_FILE, {
+    ...previousState,
+    runtimeKey: GPU_BACKEND_RUNTIME_KEY,
+    lastBackend: ACTIVE_GPU_BACKEND.backend,
+    lastSuccessAt: Date.now(),
+    renderer: String(detail.renderer || detail.message || "").slice(0, 300),
+    ...(ACTIVE_GPU_BACKEND.backend === "vulkan"
+      ? {
+          vulkanFailedAt: 0,
+          vulkanFailureReason: "",
+          vulkanFailureDetail: "",
+        }
+      : {}),
+  });
+  console.log(`[GPUBackend] ${ACTIVE_GPU_BACKEND.backend} renderer ready`);
+}
+
+function requestGpuBackendFallback(reason, detail = "") {
+  if (
+    gpuBackendFallbackStarted ||
+    appQuitting ||
+    ACTIVE_GPU_BACKEND.backend !== "vulkan" ||
+    ACTIVE_GPU_BACKEND.canFallback !== true
+  )
+    return false;
+  gpuBackendFallbackStarted = true;
+  clearGpuBackendWatchdog();
+  const safeReason = String(reason || "vulkan-failed").slice(0, 160);
+  writeGpuBackendState(GPU_BACKEND_STATE_FILE, {
+    ...readGpuBackendState(GPU_BACKEND_STATE_FILE),
+    runtimeKey: GPU_BACKEND_RUNTIME_KEY,
+    lastBackend: "vulkan",
+    vulkanFailedAt: Date.now(),
+    vulkanFailureReason: safeReason,
+    vulkanFailureDetail: String(detail || "").slice(0, 500),
+  });
+  console.warn(
+    `[GPUBackend] Vulkan failed (${safeReason}); restarting with ${ACTIVE_GPU_BACKEND.fallback}.`,
+  );
+  process.env.MINERADIO_GPU_BACKEND_RELAUNCH = ACTIVE_GPU_BACKEND.fallback;
+  appQuitting = true;
+  app.relaunch({ args: process.argv.slice(1) });
+  app.exit(0);
+  return true;
+}
+
+function armGpuBackendWatchdog(win) {
+  if (
+    gpuBackendRendererReady ||
+    gpuBackendFallbackStarted ||
+    ACTIVE_GPU_BACKEND.backend !== "vulkan" ||
+    ACTIVE_GPU_BACKEND.canFallback !== true ||
+    !win ||
+    win.isDestroyed() ||
+    !isTrustedMainDocumentUrl(win.webContents.getURL())
+  )
+    return;
+  clearGpuBackendWatchdog();
+  gpuBackendWatchdogTimer = setTimeout(() => {
+    gpuBackendWatchdogTimer = null;
+    requestGpuBackendFallback("renderer-first-frame-timeout");
+  }, 12000);
 }
 
 function collectAppTrimPids() {
@@ -2837,7 +3016,7 @@ function createOrUpdateTray() {
   if (process.platform !== "win32" && process.platform !== "linux") return;
   if (!tray) {
     try {
-      tray = new Tray(APP_ICON_ICO);
+      tray = new Tray(APP_ICON_PATH);
       tray.setToolTip(APP_NAME);
       tray.on("click", () => focusMainWindow());
       tray.on("double-click", () => focusMainWindow());
@@ -3027,6 +3206,12 @@ function buildStartupErrorMessage(context, code, logInfo, error) {
 }
 
 function reportWindowCreationFailure(context, error) {
+  if (gpuBackendFallbackStarted) {
+    console.warn(
+      `[GPUBackend] ignored window failure during fallback: ${startupErrorText(error)}`,
+    );
+    return;
+  }
   const code = resolveStartupErrorCode(context, error);
   const logInfo = writeStartupErrorLog(context, code, error);
   writeStartupState("failed", {
@@ -3807,7 +3992,7 @@ async function openNeteaseMusicLoginWindow(owner) {
       autoHideMenuBar: true,
       title: "网易云音乐登录",
       backgroundColor: "#111111",
-      icon: APP_ICON_ICO,
+      ...(process.platform === "darwin" ? {} : { icon: APP_ICON_PATH }),
       webPreferences: {
         partition: NETEASE_LOGIN_PARTITION,
         contextIsolation: true,
@@ -3930,7 +4115,7 @@ async function openQQMusicLoginWindow(owner, options) {
       autoHideMenuBar: true,
       title: "QQ 音乐登录",
       backgroundColor: "#111111",
-      icon: APP_ICON_ICO,
+      ...(process.platform === "darwin" ? {} : { icon: APP_ICON_PATH }),
       webPreferences: {
         partition: QQ_LOGIN_PARTITION,
         contextIsolation: true,
@@ -4058,7 +4243,7 @@ async function openKugouMusicLoginWindow(owner) {
       autoHideMenuBar: true,
       title: "酷狗音乐登录",
       backgroundColor: "#111111",
-      icon: APP_ICON_ICO,
+      ...(process.platform === "darwin" ? {} : { icon: APP_ICON_PATH }),
       webPreferences: {
         partition: KUGOU_LOGIN_PARTITION,
         contextIsolation: true,
@@ -4208,7 +4393,7 @@ async function openQishuiOfficialWebLoginWindow(owner, config) {
       autoHideMenuBar: true,
       title: "汽水音乐扫码登录",
       backgroundColor: "#10110f",
-      icon: APP_ICON_ICO,
+      ...(process.platform === "darwin" ? {} : { icon: APP_ICON_PATH }),
       webPreferences: {
         partition: QISHUI_LOGIN_PARTITION,
         contextIsolation: true,
@@ -4511,7 +4696,7 @@ async function openQishuiOfficialWebLoginWindowLegacy(owner, config) {
       autoHideMenuBar: true,
       title: "汽水音乐官方窗口",
       backgroundColor: "#111111",
-      icon: APP_ICON_ICO,
+      ...(process.platform === "darwin" ? {} : { icon: APP_ICON_PATH }),
       webPreferences: {
         partition: QISHUI_LOGIN_PARTITION,
         contextIsolation: true,
@@ -5153,7 +5338,7 @@ async function openSpotifyMusicLoginWindow(owner) {
       autoHideMenuBar: true,
       title: "Spotify 授权",
       backgroundColor: "#101414",
-      icon: APP_ICON_ICO,
+      ...(process.platform === "darwin" ? {} : { icon: APP_ICON_PATH }),
       webPreferences: {
         partition: SPOTIFY_LOGIN_PARTITION,
         contextIsolation: true,
@@ -5204,15 +5389,13 @@ async function openSpotifyMusicLoginWindow(owner) {
           message: "Spotify 授权窗口已关闭。",
         });
     });
-    loginWindow
-      .loadURL(authUrl)
-      .catch((e) =>
-        finish({
-          ok: false,
-          provider: "spotify",
-          error: e.message || "Spotify 授权页打开失败",
-        }),
-      );
+    loginWindow.loadURL(authUrl).catch((e) =>
+      finish({
+        ok: false,
+        provider: "spotify",
+        error: e.message || "Spotify 授权页打开失败",
+      }),
+    );
   });
 }
 
@@ -5453,6 +5636,8 @@ function applyWindowedBounds(win) {
 
 function exitFullscreenToWindow(win) {
   if (!win || win.isDestroyed()) return;
+  clearTimeout(fullscreenTransitionTimer);
+  fullscreenTransitionTimer = null;
   windowFullscreenActive = false;
 
   if (!win.isFullScreen()) {
@@ -5476,13 +5661,54 @@ function toggleFullscreen(win) {
   windowFullscreenActive = true;
   ensureMainWindowInsideDisplay(win);
   setMainWindowFullscreenResizeGuard(win, true);
-  win.setFullScreen(true);
+  try {
+    if (
+      typeof win.isFullScreenable === "function" &&
+      typeof win.setFullScreenable === "function" &&
+      !win.isFullScreenable()
+    ) {
+      win.setFullScreenable(true);
+    }
+    win.setFullScreen(true);
+  } catch (error) {
+    windowFullscreenActive = false;
+    setMainWindowFullscreenResizeGuard(win, false);
+    sendWindowState(win);
+    console.warn(
+      "[WindowFullscreen] enter failed:",
+      (error && error.message) || error,
+    );
+    return;
+  }
   sendWindowState(win);
+  clearTimeout(fullscreenTransitionTimer);
+  // Native fullscreen is asynchronous on macOS. Events remain authoritative;
+  // this watchdog only rolls back a request whose event never arrives.
+  fullscreenTransitionTimer = setTimeout(
+    () => {
+      fullscreenTransitionTimer = null;
+      if (!win.isDestroyed() && !win.isFullScreen()) {
+        windowFullscreenActive = false;
+        setMainWindowFullscreenResizeGuard(win, false);
+        sendWindowState(win);
+      }
+    },
+    process.platform === "darwin" ? 10000 : 3000,
+  );
+}
+
+function toggleMaximize(win) {
+  if (!win || win.isDestroyed()) return;
+  // Avoid conflicting native window operations during a fullscreen transition,
+  // particularly while macOS is animating between Spaces.
+  if (win.isFullScreen() || windowFullscreenActive) return;
+  if (win.isMaximized()) win.unmaximize();
+  else win.maximize();
 }
 
 function overlayUrl(page) {
   const port = mainServerPort || process.env.PORT || 3000;
-  return `http://127.0.0.1:${port}/${page}`;
+  return `http://${LOCAL_SERVER_URL_HOST}:${port}/${page}`;
 }
 
 function clampNumber(value, min, max, fallback) {
@@ -5963,7 +6189,7 @@ ipcMain.handle("desktop-window-toggle-maximize", (event) => {
   ) {
     return getWindowState(win);
   }
-  toggleFullscreen(win);
+  toggleMaximize(win);
   return getWindowState(win);
 });
 
@@ -6073,6 +6299,24 @@ ipcMain.on("mineradio-full-desktop-pointer-route", (event, payload = {}) => {
 
 ipcMain.handle("mineradio-get-gpu-diagnostics", () => {
   return getGpuDiagnostics();
+});
+
+ipcMain.on("mineradio-gpu-backend-status", (event, payload = {}) => {
+  if (!isTrustedMainWindowIpc(event)) return;
+  if (payload.ok === true) {
+    recordGpuBackendSuccess(payload).catch((error) => {
+      gpuBackendValidationInFlight = false;
+      requestGpuBackendFallback(
+        "gpu-validation-failed",
+        error.message || error,
+      );
+    });
+    return;
+  }
+  requestGpuBackendFallback(
+    payload.reason || "renderer-reported-failure",
+    payload.message,
+  );
 });
 
 ipcMain.handle("mineradio-memory-get-snapshot", async () => {
@@ -7407,7 +7651,8 @@ ipcMain.handle("mineradio-wallpaper-get-status", async (event) => {
 });
 
 function configureLocalServerEnvironment(port) {
-  process.env.HOST = "127.0.0.1";
+  process.env.MINERADIO_LISTEN_HOST = LOCAL_SERVER_HOST;
+  process.env.HOST = LOCAL_SERVER_HOST;
   process.env.PORT = String(port);
   process.env.MINERADIO_BEAT_CACHE_DIR = cacheSettings.beatmapsPath;
   process.env.CUEFIELD_FEEDBACK_FILE = path.join(
@@ -7767,7 +8012,7 @@ function showMainWindowSafely(win, reason) {
 
 async function loadMainWindowWithRetry(win) {
   const port = mainServerPort || process.env.PORT || 3000;
-  const baseUrl = `http://127.0.0.1:${port}`;
+  const baseUrl = `http://${LOCAL_SERVER_URL_HOST}:${port}`;
   let lastError = null;
   for (let attempt = 1; attempt <= 2; attempt += 1) {
     if (!win || win.isDestroyed())
@@ -7847,6 +8092,7 @@ async function createWindowOnce() {
     show: false,
     frame: false,
     fullscreen: false,
+    fullscreenable: true,
     resizable: true,
     transparent: true,
     opacity: process.env.MINERADIO_STARTUP_QA_HIDDEN === "1" ? 0 : 1,
@@ -7854,7 +8100,7 @@ async function createWindowOnce() {
     hasShadow: true,
     autoHideMenuBar: true,
     title: APP_NAME,
-    icon: APP_ICON_ICO,
+    ...(process.platform === "darwin" ? {} : { icon: APP_ICON_PATH }),
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
@@ -7896,6 +8142,7 @@ async function createWindowOnce() {
 
   win.webContents.on("did-finish-load", () => {
     showMainWindowSafely(win, "did-finish-load");
+    armGpuBackendWatchdog(win);
   });
   win.webContents.on("dom-ready", () => {
     showMainWindowSafely(win, "dom-ready");
@@ -7923,6 +8170,12 @@ async function createWindowOnce() {
       `renderer process gone: ${(details && details.reason) || "unknown"} exitCode=${details && details.exitCode}`,
     );
     console.error("[StartupWindow]", error.message);
+    requestGpuBackendFallback(
+      "render-process-gone",
+      `${(details && details.reason) || "unknown"}:${
+        (details && details.exitCode) || ""
+      }`,
+    );
     if (!startupCompleted)
       writeStartupErrorLog("Renderer process gone", "MR-BOOT-GPU", error);
   });
@@ -8063,6 +8316,9 @@ async function createWindowOnce() {
       clearTimeout(mainWindowStateTimer);
       mainWindowStateTimer = null;
     }
+    clearTimeout(fullscreenTransitionTimer);
+    fullscreenTransitionTimer = null;
+    clearGpuBackendWatchdog();
     if (appMemoryTrimTimer) {
       clearTimeout(appMemoryTrimTimer);
       appMemoryTrimTimer = null;
@@ -8079,6 +8335,8 @@ async function createWindowOnce() {
     }
   });
   win.on("enter-full-screen", () => {
+    clearTimeout(fullscreenTransitionTimer);
+    fullscreenTransitionTimer = null;
     windowFullscreenActive = true;
     setMainWindowFullscreenResizeGuard(win, true);
     sendWindowState(win);
@@ -8090,6 +8348,8 @@ async function createWindowOnce() {
     );
   });
   win.on("leave-full-screen", () => {
+    clearTimeout(fullscreenTransitionTimer);
+    fullscreenTransitionTimer = null;
     windowFullscreenActive = false;
     setMainWindowFullscreenResizeGuard(win, false);
     setTimeout(() => {
@@ -8171,6 +8431,14 @@ function createWindow() {
 }
 
 if (process.platform === "win32") app.setAppUserModelId(APP_USER_MODEL_ID);
+
+app.on("child-process-gone", (_event, details) => {
+  if (!details || String(details.type || "").toLowerCase() !== "gpu") return;
+  requestGpuBackendFallback(
+    "gpu-process-gone",
+    `${details.reason || "unknown"}:${details.exitCode || ""}`,
+  );
+});
 
 if (!gotSingleInstanceLock) {
   app.quit();

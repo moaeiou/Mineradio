@@ -93,8 +93,8 @@ pnpm build:原系统:原包格式:dir
 Mineradio 的本地服务默认只监听 `127.0.0.1`，仅允许本机访问。如果需要让局域网中的其他设备访问，可以在启动时指定监听地址：
 
 ```bash
-./mineradio -l 0.0.0.0
-./mineradio --listen 0.0.0.0
+./Mineradio -l 0.0.0.0
+./Mineradio --listen 0.0.0.0
 ```
 
 开发环境可以通过环境变量指定：

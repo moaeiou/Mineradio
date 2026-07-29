@@ -440,6 +440,7 @@ function animate() {
       splashWarmRenderLast = now;
       var splashRenderPerfStart = performance.now();
       renderer.render(scene, camera);
+      reportMainRendererGpuReady();
       if (perfProbe && perfProbe.markSince)
         perfProbe.markSince("renderer.render.splash", splashRenderPerfStart);
     }
@@ -1101,6 +1102,7 @@ function animate() {
 
   var rendererPerfStart = performance.now();
   renderer.render(scene, camera);
+  reportMainRendererGpuReady();
   if (perfProbe && perfProbe.markSince)
     perfProbe.markSince("renderer.render", rendererPerfStart);
   var frameCostMs = performance.now() - framePerfStart;

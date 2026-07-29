@@ -135,9 +135,17 @@ const {
 const {
   planCuefieldTransitionFromCache,
 } = require("./cuefield/mineradio-bridge");
+const {
+  resolveListenHost,
+  formatListenHostForUrl,
+} = require("./desktop/listen-host");
 
 const PORT = process.env.PORT || 3000;
-const HOST = process.env.HOST || "0.0.0.0";
+const LISTEN_CONFIG = resolveListenHost({
+  argv: process.argv,
+  env: process.env,
+});
+const HOST = LISTEN_CONFIG.host;
 const LOGIN_EASTER_EGG_GATE_FILE = String(
   process.env.MINERADIO_LOGIN_EASTER_EGG_GATE_FILE || "",
 );
@@ -184,7 +192,7 @@ const UPDATE_FALLBACK_NOTES = [
 ];
 const OPEN_METEO_FORECAST_URL = "https://api.open-meteo.com/v1/forecast";
 const OPEN_METEO_GEOCODE_URL = "https://geocoding-api.open-meteo.com/v1/search";
-const WEATHER_IP_LOCATION_URL = "http://ip-api.com/json/";
+const WEATHER_IP_LOCATION_URL = "https://ipinfo.io/json";
 const WEATHER_DEFAULT_LOCATION = {
   name: "上海",
   country: "China",
@@ -2833,33 +2841,44 @@ async function fetchOpenMeteoWeather(params) {
 
 async function fetchIpWeatherLocation() {
   const u = new URL(WEATHER_IP_LOCATION_URL);
-  u.searchParams.set(
-    "fields",
-    "status,message,country,regionName,city,lat,lon,timezone,query",
-  );
-  u.searchParams.set("lang", "zh-CN");
+  const token = String(process.env.IPINFO_TOKEN || "").trim();
+  if (token) u.searchParams.set("token", token);
   const body = await requestJson(u.toString(), {
-    headers: { "User-Agent": UA },
+    headers: {
+      Accept: "application/json",
+      "User-Agent": UA,
+    },
   });
+  const coordinates = String((body && body.loc) || "")
+    .split(",")
+    .map(Number);
+  const latitude = coordinates[0];
+  const longitude = coordinates[1];
   if (
     !body ||
-    body.status !== "success" ||
-    !Number.isFinite(Number(body.lat)) ||
-    !Number.isFinite(Number(body.lon))
+    body.bogon === true ||
+    !Number.isFinite(latitude) ||
+    !Number.isFinite(longitude) ||
+    latitude < -90 ||
+    latitude > 90 ||
+    longitude < -180 ||
+    longitude > 180
   ) {
-    const err = new Error((body && body.message) || "IP_LOCATION_FAILED");
+    const providerError =
+      body && body.error && (body.error.message || body.error.title);
+    const err = new Error(providerError || "IP_LOCATION_FAILED");
     err.body = body;
     throw err;
   }
   return {
-    provider: "ip-api",
+    provider: "ipinfo",
     city: body.city || WEATHER_DEFAULT_LOCATION.name,
-    region: body.regionName || "",
+    region: body.region || "",
     country: body.country || "",
-    latitude: Number(body.lat),
-    longitude: Number(body.lon),
+    latitude,
+    longitude,
     timezone: body.timezone || "auto",
-    ip: body.query || "",
+    ip: body.ip || "",
   };
 }
 
@@ -9922,7 +9941,13 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, HOST, () => {
   console.log("======================================================");
-  console.log(" 粒子音乐可视化 v2  →  http://localhost:" + PORT);
+  console.log(
+    " 粒子音乐可视化 v2  →  http://" +
+      formatListenHostForUrl(HOST) +
+      ":" +
+      PORT,
+  );
+  console.log(" 监听来源: " + LISTEN_CONFIG.source);
   console.log(" 登录态: " + (userCookie ? "已登录(cookie已加载)" : "未登录"));
   console.log("======================================================");
 });
