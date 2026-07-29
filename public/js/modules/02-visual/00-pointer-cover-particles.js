@@ -1173,6 +1173,11 @@ function backgroundStarRiverTargetAlpha() {
   )
     return 0;
   if (
+    typeof SONIC_WORKSHOP_PRESET_INDEX !== "undefined" &&
+    Number(fx.preset) === SONIC_WORKSHOP_PRESET_INDEX
+  )
+    return 0.28;
+  if (
     typeof SKULL_PRESET_INDEX !== "undefined" &&
     Number(fx.preset) === SKULL_PRESET_INDEX
   )

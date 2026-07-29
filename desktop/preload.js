@@ -2,7 +2,6 @@ const { contextBridge, ipcRenderer, clipboard } = require("electron");
 
 contextBridge.exposeInMainWorld("desktopWindow", {
   isDesktop: true,
-  platform: process.platform,
   minimize: () => ipcRenderer.invoke("desktop-window-minimize"),
   restore: () => ipcRenderer.invoke("desktop-window-restore"),
   toggleMaximize: () => ipcRenderer.invoke("desktop-window-toggle-maximize"),
@@ -115,8 +114,8 @@ contextBridge.exposeInMainWorld("desktopWindow", {
   clearQishuiMusicLogin: () => ipcRenderer.invoke("qishui-music-clear-login"),
   openSpotifyMusicLogin: () => ipcRenderer.invoke("spotify-music-open-login"),
   clearSpotifyMusicLogin: () => ipcRenderer.invoke("spotify-music-clear-login"),
-  openUpdateInstaller: (filePath) =>
-    ipcRenderer.invoke("mineradio-open-update-installer", filePath),
+  openUpdatePage: (url) =>
+    ipcRenderer.invoke("mineradio-open-update-page", String(url || "")),
   restartApp: () => ipcRenderer.invoke("mineradio-restart-app"),
   configureGlobalHotkeys: (bindings) =>
     ipcRenderer.invoke("mineradio-hotkeys-configure-global", bindings || []),

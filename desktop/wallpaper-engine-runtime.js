@@ -5088,19 +5088,6 @@ class WallpaperEngineRuntime {
   }
 
   async dispose() {
-    if (this.platform !== "win32") {
-      this.disposed = true;
-      this.pending = null;
-      this.active = null;
-      this.signatureCache.clear();
-      this.executableCache = null;
-      return {
-        ok: true,
-        stopped: false,
-        active: false,
-        sessionId: "",
-      };
-    }
     if (this.disposed) {
       return {
         ok: !this.active && !this.pending,
@@ -5114,12 +5101,13 @@ class WallpaperEngineRuntime {
       };
     }
     this.disposed = true;
+    const isClean = () => !this.active && !this.pending;
     let result = await this.stop();
-    if (!result || result.stopped !== true) {
+    if ((!result || result.stopped !== true) && !isClean()) {
       await this.nativeSleep(180);
       result = await this.stop();
     }
-    if (!result || result.stopped !== true) {
+    if ((!result || result.stopped !== true) && !isClean()) {
       const leftovers = [];
       if (this.pending) leftovers.push(this.pending);
       if (
@@ -5141,7 +5129,14 @@ class WallpaperEngineRuntime {
         reason: "WALLPAPER_ENGINE_WINDOW_CLOSE_FAILED",
       };
     } else {
-      result = { ...result, ok: true };
+      result = {
+        ...(result || {}),
+        ok: true,
+        stopped: true,
+        active: false,
+        sessionId: "",
+        reason: "",
+      };
     }
     this.signatureCache.clear();
     this.executableCache = null;

@@ -1860,6 +1860,9 @@ function updateLyricRowLayers(data, opts) {
   var seed = Number(opts.seed) || 0;
   var renderBase = opts.renderBase == null ? 43 : Number(opts.renderBase);
   if (!isFinite(renderBase)) renderBase = 43;
+  if (data.rowLayerGroup) data.rowLayerGroup.renderOrder = renderBase;
+  if (data.contextGroup) data.contextGroup.renderOrder = renderBase;
+  if (data.readabilityGroup) data.readabilityGroup.renderOrder = renderBase;
   var translationMode = normalizeLyricTranslationMode(
     fx && fx.lyricTranslationMode,
   );

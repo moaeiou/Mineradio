@@ -3066,11 +3066,6 @@ function updateWallpaperEngineLibraryStatus(snapshot, error) {
   }
 }
 
-function wallpaperEnginePlatformSupported() {
-  var api = wallpaperEngineDesktopApi();
-  return !!(api && api.platform === "win32");
-}
-
 function consumeWallpaperEngineSnapshot(snapshot) {
   wallpaperEngineLibrarySnapshot = snapshot || null;
   wallpaperEngineMediaToken = /^[a-f0-9]{48}$/i.test(
@@ -3119,11 +3114,6 @@ function consumeWallpaperEngineSnapshot(snapshot) {
 
 async function loadWallpaperEngineLibrary(force, showNotice) {
   var api = wallpaperEngineDesktopApi();
-  if (!wallpaperEnginePlatformSupported()) {
-    updateWallpaperEngineLibraryStatus(null, "Wallpaper Engine 仅支持 Windows");
-    if (showNotice) showToast("Wallpaper Engine 仅支持 Windows");
-    return [];
-  }
   if (!api || typeof api.listWallpaperEngineProjects !== "function") {
     updateWallpaperEngineLibraryStatus(null, "仅桌面版支持本地壁纸识别");
     if (showNotice) showToast("当前环境不支持 Wallpaper Engine 本地识别");
@@ -3163,10 +3153,6 @@ async function loadWallpaperEngineLibrary(force, showNotice) {
 }
 
 async function openWallpaperEngineLibrary() {
-  if (!wallpaperEnginePlatformSupported()) {
-    showToast("Wallpaper Engine 仅支持 Windows");
-    return;
-  }
   var modal = document.getElementById("wallpaper-engine-modal");
   if (modal) modal.classList.add("show");
   if (!wallpaperEngineLibrarySnapshot)

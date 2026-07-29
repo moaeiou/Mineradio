@@ -493,6 +493,23 @@ function bindFxPanel() {
       setSonicGroundColor(pair[1], picker.value);
     });
   });
+  [
+    ["sonic-workshop-cover-picker", "theme"],
+    ["sonic-workshop-base-picker", "base"],
+    ["sonic-workshop-warm-picker", "warm"],
+    ["sonic-workshop-cool-picker", "cool"],
+    ["sonic-workshop-ripple-picker", "ripple"],
+    ["sonic-workshop-peak-picker", "peak"],
+  ].forEach(function (pair) {
+    var picker = document.getElementById(pair[0]);
+    if (!picker) return;
+    picker.addEventListener("input", function () {
+      setSonicWorkshopRegionColorFromPicker(pair[1], picker.value, true);
+    });
+    picker.addEventListener("change", function () {
+      setSonicWorkshopRegionColorFromPicker(pair[1], picker.value);
+    });
+  });
   var homeAccentPicker = document.getElementById("home-accent-picker");
   if (homeAccentPicker) {
     homeAccentPicker.addEventListener("input", function () {
@@ -564,6 +581,12 @@ function bindFxPanel() {
     "sonic-ground-cool-picker",
     "sonic-ground-warm-picker",
     "sonic-ground-accent-picker",
+    "sonic-workshop-cover-picker",
+    "sonic-workshop-base-picker",
+    "sonic-workshop-warm-picker",
+    "sonic-workshop-cool-picker",
+    "sonic-workshop-ripple-picker",
+    "sonic-workshop-peak-picker",
     "home-accent-picker",
     "home-icon-picker",
     "visual-icon-picker",

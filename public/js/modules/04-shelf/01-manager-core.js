@@ -19,6 +19,12 @@ function makeShelfManager() {
   var selectedIdx = -1;
   var coverBindResumeUntil = -10;
 
+  function shelfPointerSelectionForegroundActive() {
+    return (
+      selectedIdx >= 0 && !document.body.classList.contains("cursor-hidden")
+    );
+  }
+
   // v7.2 PSP 风格状态
   var centerIdx = 0; // 当前居中卡片 index (在 items 数组中的位置)
   var centerTarget = 0; // 目标 centerIdx (插值)
@@ -636,7 +642,12 @@ function makeShelfManager() {
         !shelfPinnedOpen && !detailOpenSide ? shelfVisibility : 0;
       var passiveAlways =
         shelfAlwaysVisible() && !shelfPinnedOpen && !detailOpenSide;
-      var liftTarget = card.selected && !detailOpenSide ? 1 : 0;
+      var liftTarget =
+        card.selected &&
+        shelfPointerSelectionForegroundActive() &&
+        !detailOpenSide
+          ? 1
+          : 0;
       var liftRate = liftTarget > (card.floatMix || 0) ? 0.2 : 0.13;
       card.floatMix =
         (card.floatMix || 0) + (liftTarget - (card.floatMix || 0)) * liftRate;
@@ -1168,10 +1179,15 @@ void main(){ vec4 t = texture2D(uDotTex, gl_PointCoord); if (t.a < 0.02) discard
         var contentOpenForLayer = !!(contentList && contentList.isOpen());
         var passiveAlwaysGroup =
           shelfAlwaysVisible() && !shelfPinnedOpen && !contentOpenForLayer;
+        var pointerSelectionForeground =
+          shelfPointerSelectionForegroundActive();
         var liftedCardActive =
           passiveAlwaysGroup &&
           cards.some(function (c) {
-            return c.selected || (c.floatMix || 0) > 0.025;
+            return (
+              (pointerSelectionForeground && c.selected) ||
+              (c.floatMix || 0) > 0.025
+            );
           });
         group.renderOrder =
           contentOpenForLayer || shelfPinnedOpen || liftedCardActive ? 300 : 30;

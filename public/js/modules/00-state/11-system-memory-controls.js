@@ -294,10 +294,6 @@ function runAppMemoryTrim(reason) {
 
 function runSystemMemoryPurge(autoElevate) {
   ensureMemoryFxDefaults();
-  if (window.desktopWindow && window.desktopWindow.platform !== "win32") {
-    showToast("系统级内存释放仅支持 Windows");
-    return;
-  }
   if (
     !window.desktopWindow ||
     typeof window.desktopWindow.purgeSystemMemory !== "function"

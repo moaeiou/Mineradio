@@ -68,7 +68,6 @@ let desktopLyricsHotBounds = null;
 let desktopLyricsLastMiddleAt = 0;
 let htmlFullscreenActive = false;
 let windowFullscreenActive = false;
-let fullscreenTransitionTimer = null;
 let mainWindowStateTimer = null;
 let appMemoryTrimTimer = null;
 let appMemoryTrimInFlight = false;
@@ -116,24 +115,6 @@ const WINDOWED_SCALE = 3 / 4;
 const WINDOWED_MARGIN = 32;
 const MIN_WINDOWED_WIDTH = 960;
 const MIN_WINDOWED_HEIGHT = 540;
-function commandLineListenHost(argv) {
-  const args = Array.isArray(argv) ? argv : [];
-  for (let index = 0; index < args.length; index += 1) {
-    const arg = String(args[index] || "");
-    if (arg === "-l" || arg === "--listen") {
-      return String(args[index + 1] || "").trim();
-    }
-    if (arg.startsWith("--listen=")) {
-      return arg.slice("--listen=".length).trim();
-    }
-  }
-  return "";
-}
-const LOCAL_SERVER_HOST =
-  commandLineListenHost(process.argv) ||
-  String(process.env.MINERADIO_LISTEN_HOST || "").trim() ||
-  String(process.env.HOST || "").trim() ||
-  "127.0.0.1";
 const APP_PACKAGE_INFO = (() => {
   try {
     return require("../package.json");
@@ -153,10 +134,6 @@ const APP_USER_MODEL_ID =
   (APP_PACKAGE_INFO.build && APP_PACKAGE_INFO.build.appId) ||
   "com.mineradio.desktop";
 const APP_ICON_ICO = path.join(__dirname, "..", "build", "icon.ico");
-const APP_ICON_PATH =
-  process.platform === "win32"
-    ? APP_ICON_ICO
-    : path.join(__dirname, "..", "build", "icon.png");
 const CURRENT_FX_AUTOSAVE_FILE = "current-fx-autosave.json";
 const CURRENT_FX_AUTOSAVE_MAX_BYTES = 12 * 1024 * 1024;
 const STARTUP_ERROR_LOG_FILE = "startup-error.log";
@@ -194,7 +171,18 @@ const QISHUI_OFFICIAL_CLIENT_DATA_DIRS = (
 // user-selectable Chromium cache. app.setName() must run before the first
 // derived path lookup or Electron can recompute userData below the cache root.
 app.setName(APP_NAME);
-const STABLE_USER_DATA_PATH = path.join(app.getPath("appData"), APP_NAME);
+const STARTUP_QA_USER_DATA_PATH = (() => {
+  const value = String(process.env.MINERADIO_STARTUP_QA_USER_DATA || "").trim();
+  if (
+    process.env.MINERADIO_STARTUP_QA_HIDDEN !== "1" ||
+    !value ||
+    !path.isAbsolute(value)
+  )
+    return "";
+  return path.resolve(value);
+})();
+const STABLE_USER_DATA_PATH =
+  STARTUP_QA_USER_DATA_PATH || path.join(app.getPath("appData"), APP_NAME);
 fs.mkdirSync(STABLE_USER_DATA_PATH, { recursive: true });
 app.setPath("userData", STABLE_USER_DATA_PATH);
 const INITIAL_CACHE_SETTINGS = ensureCacheDirectories(readCacheSettings());
@@ -383,7 +371,7 @@ function cacheSettingsConfigPath() {
 
 function defaultCacheRootPath() {
   const dDrive = "D:\\";
-  return process.platform === "win32" && fs.existsSync(dDrive)
+  return fs.existsSync(dDrive)
     ? path.join(dDrive, "MineradioCache")
     : path.join(app.getPath("userData"), "cache");
 }
@@ -407,7 +395,6 @@ function normalizeCacheSettings(value) {
     lyricsPath: path.join(rootPath, "lyrics"),
     chromiumPath: path.join(rootPath, "chromium"),
     beatmapsPath: path.join(rootPath, "beatmaps"),
-    updatesPath: path.join(rootPath, "updates"),
     nativePath: path.join(rootPath, "native-helper-temp"),
   };
 }
@@ -450,7 +437,6 @@ function ensureCacheDirectories(settings) {
     fs.mkdirSync(normalized.chromiumPath, { recursive: true });
     fs.mkdirSync(chromiumSessionDataPath(normalized), { recursive: true });
     fs.mkdirSync(normalized.beatmapsPath, { recursive: true });
-    fs.mkdirSync(normalized.updatesPath, { recursive: true });
     fs.mkdirSync(normalized.nativePath, { recursive: true });
     return normalized;
   } catch (error) {
@@ -468,7 +454,6 @@ function ensureCacheDirectories(settings) {
     fs.mkdirSync(fallback.chromiumPath, { recursive: true });
     fs.mkdirSync(chromiumSessionDataPath(fallback), { recursive: true });
     fs.mkdirSync(fallback.beatmapsPath, { recursive: true });
-    fs.mkdirSync(fallback.updatesPath, { recursive: true });
     fs.mkdirSync(fallback.nativePath, { recursive: true });
     return fallback;
   }
@@ -506,8 +491,6 @@ async function cacheSettingsSnapshot() {
   const desiredChromiumPath = chromiumSessionDataPath(settings);
   const activeBeatmapsPath =
     process.env.MINERADIO_BEAT_CACHE_DIR || settings.beatmapsPath;
-  const activeUpdatesPath =
-    process.env.MINERADIO_UPDATE_DIR || settings.updatesPath;
   const activeNativePath = NATIVE_HELPER_TEMP_PATH;
   const wallpaperEnginePath = path.join(
     settings.nativePath,
@@ -521,14 +504,12 @@ async function cacheSettingsSnapshot() {
     lyricsBytes,
     chromiumBytes,
     beatmapsBytes,
-    updatesBytes,
     wallpaperEngineBytes,
     userDataBytes,
   ] = await Promise.all([
     directoryUsageBytes(settings.lyricsPath),
     directoryUsageBytes(currentChromiumPath),
     directoryUsageBytes(activeBeatmapsPath),
-    directoryUsageBytes(activeUpdatesPath),
     directoryUsageBytes(activeWallpaperEnginePath),
     directoryUsageBytes(app.getPath("userData")),
   ]);
@@ -536,8 +517,6 @@ async function cacheSettingsSnapshot() {
     path.resolve(desiredChromiumPath) !== path.resolve(currentChromiumPath);
   const beatmapsRestartRequired =
     path.resolve(settings.beatmapsPath) !== path.resolve(activeBeatmapsPath);
-  const updatesRestartRequired =
-    path.resolve(settings.updatesPath) !== path.resolve(activeUpdatesPath);
   const nativeRestartRequired =
     path.resolve(settings.nativePath) !== path.resolve(activeNativePath);
   return {
@@ -549,8 +528,6 @@ async function cacheSettingsSnapshot() {
       activeChromiumPath: currentChromiumPath,
       beatmapsPath: settings.beatmapsPath,
       activeBeatmapsPath,
-      updatesPath: settings.updatesPath,
-      activeUpdatesPath,
       nativePath: settings.nativePath,
       activeNativePath,
       wallpaperEnginePath,
@@ -559,22 +536,16 @@ async function cacheSettingsSnapshot() {
       restartRequired:
         chromiumRestartRequired ||
         beatmapsRestartRequired ||
-        updatesRestartRequired ||
         nativeRestartRequired,
     },
     usage: {
       lyricsBytes,
       chromiumBytes,
       beatmapsBytes,
-      updatesBytes,
       wallpaperEngineBytes,
       userDataBytes,
       totalManagedBytes:
-        lyricsBytes +
-        chromiumBytes +
-        beatmapsBytes +
-        updatesBytes +
-        wallpaperEngineBytes,
+        lyricsBytes + chromiumBytes + beatmapsBytes + wallpaperEngineBytes,
     },
   };
 }
@@ -637,17 +608,8 @@ const CHROMIUM_SAFE_PERFORMANCE_SWITCHES = [
   ["enable-oop-rasterization"],
   ["enable-zero-copy"],
   ["enable-accelerated-2d-canvas"],
-  ...(process.platform === "win32" ? [["use-angle", "d3d11"]] : []),
+  ["use-angle", "d3d11"],
 ];
-if (
-  process.platform === "linux" &&
-  (process.env.XDG_SESSION_TYPE === "wayland" || process.env.WAYLAND_DISPLAY)
-) {
-  CHROMIUM_SAFE_PERFORMANCE_SWITCHES.push([
-    "disable-features",
-    "WaylandWpColorManagerV1",
-  ]);
-}
 const CHROMIUM_OPT_IN_PERFORMANCE_SWITCHES = [
   ["ignore-gpu-blocklist", null, "MINERADIO_IGNORE_GPU_BLOCKLIST"],
   ["force_high_performance_gpu", null, "MINERADIO_FORCE_HIGH_PERFORMANCE_GPU"],
@@ -2552,10 +2514,6 @@ function getWindowState(win) {
 
 function setMainWindowFullscreenResizeGuard(win, fullscreen) {
   if (!win || win.isDestroyed()) return;
-  // This lock only works around resize storms produced by some Windows
-  // compositors. On macOS, making the window non-resizable also changes its
-  // native fullscreen eligibility and can make setFullScreen(true) a no-op.
-  if (process.platform !== "win32") return;
   const shouldResize = !fullscreen;
   try {
     if (
@@ -2876,9 +2834,10 @@ function focusMainWindow() {
 }
 
 function createOrUpdateTray() {
+  if (process.platform !== "win32" && process.platform !== "linux") return;
   if (!tray) {
     try {
-      tray = new Tray(APP_ICON_PATH);
+      tray = new Tray(APP_ICON_ICO);
       tray.setToolTip(APP_NAME);
       tray.on("click", () => focusMainWindow());
       tray.on("double-click", () => focusMainWindow());
@@ -3122,12 +3081,6 @@ function bindStartupFailureHandlers() {
 }
 
 bindStartupFailureHandlers();
-
-function getUpdateDownloadDir() {
-  return cacheSettings && cacheSettings.updatesPath
-    ? cacheSettings.updatesPath
-    : path.join(app.getPath("userData"), "updates");
-}
 
 function shouldEnsureDesktopShortcut() {
   if (process.platform !== "win32") return false;
@@ -3854,7 +3807,7 @@ async function openNeteaseMusicLoginWindow(owner) {
       autoHideMenuBar: true,
       title: "网易云音乐登录",
       backgroundColor: "#111111",
-      ...(process.platform === "darwin" ? {} : { icon: APP_ICON_PATH }),
+      icon: APP_ICON_ICO,
       webPreferences: {
         partition: NETEASE_LOGIN_PARTITION,
         contextIsolation: true,
@@ -3977,7 +3930,7 @@ async function openQQMusicLoginWindow(owner, options) {
       autoHideMenuBar: true,
       title: "QQ 音乐登录",
       backgroundColor: "#111111",
-      ...(process.platform === "darwin" ? {} : { icon: APP_ICON_PATH }),
+      icon: APP_ICON_ICO,
       webPreferences: {
         partition: QQ_LOGIN_PARTITION,
         contextIsolation: true,
@@ -4105,7 +4058,7 @@ async function openKugouMusicLoginWindow(owner) {
       autoHideMenuBar: true,
       title: "酷狗音乐登录",
       backgroundColor: "#111111",
-      ...(process.platform === "darwin" ? {} : { icon: APP_ICON_PATH }),
+      icon: APP_ICON_ICO,
       webPreferences: {
         partition: KUGOU_LOGIN_PARTITION,
         contextIsolation: true,
@@ -4255,7 +4208,7 @@ async function openQishuiOfficialWebLoginWindow(owner, config) {
       autoHideMenuBar: true,
       title: "汽水音乐扫码登录",
       backgroundColor: "#10110f",
-      ...(process.platform === "darwin" ? {} : { icon: APP_ICON_PATH }),
+      icon: APP_ICON_ICO,
       webPreferences: {
         partition: QISHUI_LOGIN_PARTITION,
         contextIsolation: true,
@@ -4558,7 +4511,7 @@ async function openQishuiOfficialWebLoginWindowLegacy(owner, config) {
       autoHideMenuBar: true,
       title: "汽水音乐官方窗口",
       backgroundColor: "#111111",
-      ...(process.platform === "darwin" ? {} : { icon: APP_ICON_PATH }),
+      icon: APP_ICON_ICO,
       webPreferences: {
         partition: QISHUI_LOGIN_PARTITION,
         contextIsolation: true,
@@ -5200,7 +5153,7 @@ async function openSpotifyMusicLoginWindow(owner) {
       autoHideMenuBar: true,
       title: "Spotify 授权",
       backgroundColor: "#101414",
-      ...(process.platform === "darwin" ? {} : { icon: APP_ICON_PATH }),
+      icon: APP_ICON_ICO,
       webPreferences: {
         partition: SPOTIFY_LOGIN_PARTITION,
         contextIsolation: true,
@@ -5251,13 +5204,15 @@ async function openSpotifyMusicLoginWindow(owner) {
           message: "Spotify 授权窗口已关闭。",
         });
     });
-    loginWindow.loadURL(authUrl).catch((e) =>
-      finish({
-        ok: false,
-        provider: "spotify",
-        error: e.message || "Spotify 授权页打开失败",
-      }),
-    );
+    loginWindow
+      .loadURL(authUrl)
+      .catch((e) =>
+        finish({
+          ok: false,
+          provider: "spotify",
+          error: e.message || "Spotify 授权页打开失败",
+        }),
+      );
   });
 }
 
@@ -5521,50 +5476,7 @@ function toggleFullscreen(win) {
   windowFullscreenActive = true;
   ensureMainWindowInsideDisplay(win);
   setMainWindowFullscreenResizeGuard(win, true);
-  try {
-    if (
-      typeof win.isFullScreenable === "function" &&
-      typeof win.setFullScreenable === "function" &&
-      !win.isFullScreenable()
-    ) {
-      win.setFullScreenable(true);
-    }
-    win.setFullScreen(true);
-  } catch (error) {
-    windowFullscreenActive = false;
-    setMainWindowFullscreenResizeGuard(win, false);
-    sendWindowState(win);
-    console.warn(
-      "[WindowFullscreen] enter failed:",
-      (error && error.message) || error,
-    );
-    return;
-  }
-  sendWindowState(win);
-  clearTimeout(fullscreenTransitionTimer);
-  // Native fullscreen is asynchronous on macOS. The native event remains the
-  // authority; this long watchdog only recovers from a transition that never
-  // emits an event instead of racing the normal Space animation.
-  fullscreenTransitionTimer = setTimeout(
-    () => {
-      fullscreenTransitionTimer = null;
-      if (!win.isDestroyed() && !win.isFullScreen()) {
-        windowFullscreenActive = false;
-        setMainWindowFullscreenResizeGuard(win, false);
-        sendWindowState(win);
-      }
-    },
-    process.platform === "darwin" ? 10000 : 3000,
-  );
-}
-
-function toggleMaximize(win) {
-  if (!win || win.isDestroyed()) return;
-  // Maximizing while a native fullscreen transition is active produces
-  // conflicting window operations, especially on macOS Spaces.
-  if (win.isFullScreen() || windowFullscreenActive) return;
-  if (win.isMaximized()) win.unmaximize();
-  else win.maximize();
+  win.setFullScreen(true);
   sendWindowState(win);
 }
 
@@ -6051,7 +5963,7 @@ ipcMain.handle("desktop-window-toggle-maximize", (event) => {
   ) {
     return getWindowState(win);
   }
-  toggleMaximize(win);
+  toggleFullscreen(win);
   return getWindowState(win);
 });
 
@@ -7299,19 +7211,20 @@ ipcMain.handle("spotify-music-clear-login", async () => {
   return clearSpotifyMusicLoginSession();
 });
 
-ipcMain.handle("mineradio-open-update-installer", async (_event, filePath) => {
+ipcMain.handle("mineradio-open-update-page", async (event, value) => {
   try {
-    const target = path.resolve(String(filePath || ""));
-    const updateDir = path.resolve(getUpdateDownloadDir());
-    if (!target || !target.startsWith(updateDir + path.sep)) {
-      return { ok: false, error: "INVALID_UPDATE_PATH" };
-    }
-    if (!fs.existsSync(target))
-      return { ok: false, error: "UPDATE_FILE_MISSING" };
-    const error = await shell.openPath(target);
-    return error ? { ok: false, error } : { ok: true };
+    if (!isTrustedMainWindowIpc(event))
+      return { ok: false, error: "UNTRUSTED_SENDER" };
+    const target = String(value || "").trim();
+    if (!target || target.length > 2048)
+      return { ok: false, error: "INVALID_UPDATE_URL" };
+    const parsed = new URL(target);
+    if (parsed.protocol !== "https:")
+      return { ok: false, error: "INVALID_UPDATE_URL" };
+    await shell.openExternal(parsed.href);
+    return { ok: true };
   } catch (e) {
-    return { ok: false, error: e.message || "OPEN_UPDATE_FAILED" };
+    return { ok: false, error: e.message || "OPEN_UPDATE_PAGE_FAILED" };
   }
 });
 
@@ -7494,8 +7407,7 @@ ipcMain.handle("mineradio-wallpaper-get-status", async (event) => {
 });
 
 function configureLocalServerEnvironment(port) {
-  process.env.MINERADIO_LISTEN_HOST = LOCAL_SERVER_HOST;
-  process.env.HOST = LOCAL_SERVER_HOST;
+  process.env.HOST = "127.0.0.1";
   process.env.PORT = String(port);
   process.env.MINERADIO_BEAT_CACHE_DIR = cacheSettings.beatmapsPath;
   process.env.CUEFIELD_FEEDBACK_FILE = path.join(
@@ -7545,7 +7457,6 @@ function configureLocalServerEnvironment(port) {
       ".spotify-credentials.json",
     );
   }
-  process.env.MINERADIO_UPDATE_DIR = getUpdateDownloadDir();
 }
 
 const APP_OWNED_MIGRATION_FILES = [
@@ -7936,7 +7847,6 @@ async function createWindowOnce() {
     show: false,
     frame: false,
     fullscreen: false,
-    fullscreenable: true,
     resizable: true,
     transparent: true,
     opacity: process.env.MINERADIO_STARTUP_QA_HIDDEN === "1" ? 0 : 1,
@@ -7944,7 +7854,7 @@ async function createWindowOnce() {
     hasShadow: true,
     autoHideMenuBar: true,
     title: APP_NAME,
-    ...(process.platform === "darwin" ? {} : { icon: APP_ICON_PATH }),
+    icon: APP_ICON_ICO,
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
@@ -8169,8 +8079,6 @@ async function createWindowOnce() {
     }
   });
   win.on("enter-full-screen", () => {
-    clearTimeout(fullscreenTransitionTimer);
-    fullscreenTransitionTimer = null;
     windowFullscreenActive = true;
     setMainWindowFullscreenResizeGuard(win, true);
     sendWindowState(win);
@@ -8182,8 +8090,6 @@ async function createWindowOnce() {
     );
   });
   win.on("leave-full-screen", () => {
-    clearTimeout(fullscreenTransitionTimer);
-    fullscreenTransitionTimer = null;
     windowFullscreenActive = false;
     setMainWindowFullscreenResizeGuard(win, false);
     setTimeout(() => {
