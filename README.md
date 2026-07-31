@@ -41,7 +41,7 @@ Mineradio 是一款以电影镜头、粒子视觉和歌词舞台为核心的沉�
 
 ### 版本号声明
 
-为了跟原版区分 此项目以`2026.2.0`开始作为版本号 之后每更改一次加0.0.1 除了最后一位前面的都不动
+为了跟原版区分 此项目以`2026.2.0`开始作为版本号 之后每更改一次加0.0.1
 
 ### 运行本地demo
 
@@ -99,7 +99,7 @@ Mineradio 的本地服务默认只监听 `127.0.0.1`，仅允许本机访问。�
 
 开发环境可以通过环境变量指定：
 
-> 直接运行服务端时也使用同一个环境变量。
+直接运行服务端时也使用同一个环境变量。
 
 ```bash
 MINERADIO_LISTEN_HOST=0.0.0.0 pnpm dev
@@ -111,7 +111,9 @@ MINERADIO_LISTEN_HOST=0.0.0.0 pnpm dev
 
 ### ⬇️ 缓存
 
-节奏分析缓存默认保存在系统缓存目录中，例如 Linux 下为 `~/.cache/Mineradio/beatmaps`。如需使用其他目录，可以设置：
+节奏分析缓存默认保存在系统缓存目录中，例如 Linux 下为 `~/.cache/Mineradio/beatmaps`。
+
+如需使用其他目录，可以设置：
 
 ```bash
 MINERADIO_BEAT_CACHE_DIR=/path/to/beatmaps pnpm dev
