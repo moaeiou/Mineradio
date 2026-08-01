@@ -89,6 +89,7 @@ function playbackRestoreSongSnapshot(song) {
     "radioId",
     "radioName",
     "localKey",
+    "localFileId",
   ].forEach(function (key) {
     if (song[key] != null && song[key] !== "") snap[key] = song[key];
   });

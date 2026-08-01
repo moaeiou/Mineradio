@@ -25,6 +25,18 @@ applyWallpaperModeState(false);
 setShelfMode(fx.shelf);
 if (fx.shelf === "side") setShelfPinnedOpen(!!fx.shelfPinnedOpen, true, false);
 var restoredPlaybackAtStartup = restoreLastPlaybackSnapshot();
+var persistedLocalLibraryRestorePromise = Promise.resolve(
+  restorePersistedLocalLibrary(),
+).then(
+  function (restored) {
+    if (restored) restoredPlaybackAtStartup = true;
+    else if (!restoredLastPlaybackSnapshot) restoredPlaybackAtStartup = false;
+    return restored;
+  },
+  function () {
+    return false;
+  },
+);
 applyStartupStarfieldPreset();
 switchPlaylistTab(queueViewTab, {
   save: false,
@@ -42,6 +54,7 @@ var startupLoginStatusPromise = Promise.all([
   refreshKugouLoginStatus(),
   refreshQishuiLoginStatus(),
   refreshSpotifyLoginStatus(),
+  persistedLocalLibraryRestorePromise,
 ]);
 startQQLoginStatusAutoRefresh();
 startKugouLoginStatusAutoRefresh();

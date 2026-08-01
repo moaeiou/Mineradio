@@ -20,7 +20,8 @@ function loadCoverFromUrl(directUrl, opts) {
   if (
     !directUrl ||
     typeof directUrl !== "string" ||
-    !/^https?:\/\//i.test(directUrl)
+    (!/^https?:\/\//i.test(directUrl) &&
+      !/^mineradio-local:\/\/cover\//i.test(directUrl))
   ) {
     if (!coverApplyStillCurrent(opts)) return;
     if (preserveOnSwitch && uniforms.uHasCover.value > 0.5) {

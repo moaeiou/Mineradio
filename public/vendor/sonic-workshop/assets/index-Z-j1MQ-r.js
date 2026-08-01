@@ -66342,13 +66342,15 @@ const nG = oe.forwardRef(
       b.current.instanceMatrix.needsUpdate = !0;
     }, [m, B]);
     const z = oe.useRef(
-        new Array(10).fill(null).map(() => ({
-          pos: new Ye(),
-          time: -100,
-          strength: 0,
-          isActive: 0,
-          rippleType: 0,
-        })),
+        new Array(10)
+          .fill(null)
+          .map(() => ({
+            pos: new Ye(),
+            time: -100,
+            strength: 0,
+            isActive: 0,
+            rippleType: 0,
+          })),
       ),
       G = oe.useRef(0),
       X = (Ve, Te, Ce, Fe = !1) => {
@@ -66370,18 +66372,20 @@ const nG = oe.forwardRef(
       K = oe.useRef(null),
       ae = oe.useRef(null),
       de = oe.useRef(
-        new Array(Y).fill(null).map(() => ({
-          active: !1,
-          x: 0,
-          y: -1e3,
-          z: 0,
-          vx: 0,
-          vy: 0,
-          vz: 0,
-          life: 0,
-          maxLife: 1,
-          scale: 1,
-        })),
+        new Array(Y)
+          .fill(null)
+          .map(() => ({
+            active: !1,
+            x: 0,
+            y: -1e3,
+            z: 0,
+            vx: 0,
+            vy: 0,
+            vz: 0,
+            life: 0,
+            maxLife: 1,
+            scale: 1,
+          })),
       ),
       Le = oe.useRef(0),
       q = (Ve, Te, Ce, Fe) => {
@@ -66404,14 +66408,16 @@ const nG = oe.forwardRef(
       we = oe.useMemo(() => new $s(), []),
       Ue = oe.useMemo(() => new j(), []),
       pe = oe.useRef(
-        new Array(te).fill(null).map(() => ({
-          active: !1,
-          x: 0,
-          y: -1e3,
-          z: 0,
-          speed: 0,
-          strength: 0,
-        })),
+        new Array(te)
+          .fill(null)
+          .map(() => ({
+            active: !1,
+            x: 0,
+            y: -1e3,
+            z: 0,
+            speed: 0,
+            strength: 0,
+          })),
       ),
       Be = oe.useRef(0),
       Xe = oe.useRef(-1 / 0),

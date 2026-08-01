@@ -1,2 +1,8 @@
 allowBuilds:
   electron-winstaller: true
+overrides:
+  "dotenv@>=16.4.5": "16.6.1"
+  "strtok3@>=6.0.4": "6.3.0"
+  "token-types@>=2.0.0": "2.1.1"
+  "strtok3@>=6.0.3": "6.3.0"
+  "dotenv@>=16.4.4": "16.6.1"

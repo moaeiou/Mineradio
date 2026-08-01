@@ -1,7 +1,7 @@
 {
   "name": "Mineradio",
   "productName": "Mineradio",
-  "version": "2026.2.8",
+  "version": "2026.2.9",
   "description": "一款以电影镜头、粒子视觉和歌词舞台为核心的沉浸式音乐播放器。",
   "author": "Mineradio",
   "license": "GPL-3.0-only",
@@ -136,9 +136,12 @@
     "music-metadata": "11.14.0"
   },
   "devDependencies": {
+    "dotenv": "17.4.2",
     "electron": "^43.2.0",
     "electron-builder": "^26.15.7",
-    "rcedit": "^5.0.2"
+    "rcedit": "^5.0.2",
+    "strtok3": "10.3.5",
+    "token-types": "6.1.2"
   },
   "packageManager": "pnpm@11.19.0+sha512.7881f3ed590d472c4a955e2b88b2121791116066dcc88cbca3849ec9b60f1bbaa6d2ccb221fa91da4e1c65bef2bcbe379365aea7ac539c7bf86dedc3a1b22dce"
 }

@@ -233,50 +233,11 @@ function getRenderLoadTier() {
   if (cssPixels >= 3200000 || renderPixels >= 3600000) return 1;
   return 0;
 }
-var mainRendererGpuReadyReported = false;
-function reportMainRendererGpuStatus(ok, reason, message) {
-  var api = window.desktopWindow;
-  if (!api || typeof api.reportGpuBackendStatus !== "function") return;
-  if (ok && mainRendererGpuReadyReported) return;
-  if (ok) mainRendererGpuReadyReported = true;
-  api.reportGpuBackendStatus({
-    ok: ok === true,
-    reason: String(reason || ""),
-    message: String(message || "").slice(0, 500),
-  });
-}
-function reportMainRendererGpuReady() {
-  if (mainRendererGpuReadyReported) return;
-  var rendererName = "";
-  try {
-    var gl = renderer && renderer.getContext();
-    if (gl) rendererName = String(gl.getParameter(gl.RENDERER) || "");
-  } catch (_) {}
-  reportMainRendererGpuStatus(true, "first-frame", rendererName);
-}
-var renderer;
-try {
-  renderer = new THREE.WebGLRenderer({
-    antialias: false,
-    alpha: true,
-    powerPreference: "high-performance",
-  });
-} catch (rendererError) {
-  reportMainRendererGpuStatus(
-    false,
-    "webgl-renderer-create-failed",
-    rendererError && rendererError.message,
-  );
-  throw rendererError;
-}
-renderer.domElement.addEventListener(
-  "webglcontextlost",
-  function (event) {
-    if (event && event.preventDefault) event.preventDefault();
-    reportMainRendererGpuStatus(false, "webgl-context-lost", "");
-  },
-  false,
-);
+var renderer = new THREE.WebGLRenderer({
+  antialias: false,
+  alpha: true,
+  powerPreference: "high-performance",
+});
 renderer.setClearColor(0x000000, 0);
 renderer.setPixelRatio(getRenderPixelRatio());
 renderer.setSize(innerWidth, innerHeight);

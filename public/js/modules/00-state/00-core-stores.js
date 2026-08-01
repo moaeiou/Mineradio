@@ -152,6 +152,8 @@ var loginStatusChecked = false,
   loginStatusCheckFailed = false;
 var qrPollTimer = null,
   qrKey = null;
+var qishuiQrPollBusy = false,
+  qishuiQrPollGeneration = 0;
 var volumeTween = null,
   trackSwitchToken = 0;
 var audioFadeTimer = null,
@@ -378,6 +380,7 @@ var playbackQualityRuntimeCaps = {};
 var coverCropState = null,
   coverCropBound = false;
 var currentLocalSong = null;
+var persistentLocalLibraryTracks = [];
 var lyricSourceMode = "original";
 var originalLyricsState = {
   lines: [],

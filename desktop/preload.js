@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer, clipboard } = require("electron");
+const { contextBridge, ipcRenderer, clipboard, webUtils } = require("electron");
 
 contextBridge.exposeInMainWorld("desktopWindow", {
   isDesktop: true,
@@ -11,8 +11,6 @@ contextBridge.exposeInMainWorld("desktopWindow", {
     ipcRenderer.invoke("desktop-window-exit-fullscreen-windowed"),
   getState: () => ipcRenderer.invoke("desktop-window-get-state"),
   getGpuDiagnostics: () => ipcRenderer.invoke("mineradio-get-gpu-diagnostics"),
-  reportGpuBackendStatus: (payload) =>
-    ipcRenderer.send("mineradio-gpu-backend-status", payload || {}),
   getMemorySnapshot: () => ipcRenderer.invoke("mineradio-memory-get-snapshot"),
   configureMemoryReduct: (payload) =>
     ipcRenderer.invoke("mineradio-memory-configure-auto", payload || {}),
@@ -87,6 +85,48 @@ contextBridge.exposeInMainWorld("desktopWindow", {
         listener,
       );
   },
+  listLocalMusicLibrary: () =>
+    ipcRenderer.invoke("mineradio-local-library-list"),
+  readLocalMusicLyric: (localFileId) =>
+    ipcRenderer.invoke(
+      "mineradio-local-library-lyric",
+      String(localFileId || ""),
+    ),
+  importLocalMusicFiles: async (files) => {
+    const entries = [];
+    for (const file of Array.from(files || [])) {
+      let filePath = "";
+      try {
+        filePath =
+          webUtils && typeof webUtils.getPathForFile === "function"
+            ? webUtils.getPathForFile(file)
+            : "";
+      } catch (_) {}
+      if (!filePath) continue;
+      entries.push({
+        path: filePath,
+        relativePath: String(
+          (file && (file.webkitRelativePath || file.name)) || "",
+        ),
+      });
+    }
+    if (!entries.length)
+      return {
+        ok: false,
+        count: 0,
+        tracks: [],
+        error: "NO_AUTHORIZED_LOCAL_AUDIO",
+      };
+    const authorization = await ipcRenderer.invoke(
+      "mineradio-local-library-authorize",
+      { files: entries },
+    );
+    if (!authorization || authorization.ok !== true || !authorization.token)
+      return authorization;
+    return ipcRenderer.invoke("mineradio-local-library-import", {
+      token: authorization.token,
+    });
+  },
   readLyricCache: (key) =>
     ipcRenderer.invoke("mineradio-cache-read-lyric", key || ""),
   writeLyricCache: (key, payload) =>
@@ -112,7 +152,6 @@ contextBridge.exposeInMainWorld("desktopWindow", {
   clearQQMusicLogin: () => ipcRenderer.invoke("qq-music-clear-login"),
   openKugouMusicLogin: () => ipcRenderer.invoke("kugou-music-open-login"),
   clearKugouMusicLogin: () => ipcRenderer.invoke("kugou-music-clear-login"),
-  openQishuiMusicLogin: () => ipcRenderer.invoke("qishui-music-open-login"),
   clearQishuiMusicLogin: () => ipcRenderer.invoke("qishui-music-clear-login"),
   openSpotifyMusicLogin: () => ipcRenderer.invoke("spotify-music-open-login"),
   clearSpotifyMusicLogin: () => ipcRenderer.invoke("spotify-music-clear-login"),
@@ -198,7 +237,7 @@ contextBridge.exposeInMainWorld("desktopWindow", {
       visible !== false,
     ),
   requestDesktopKeyboardFocus: (reason) =>
-    ipcRenderer.send(
+    ipcRenderer.invoke(
       "mineradio-full-desktop-request-keyboard-focus",
       String(reason || "renderer-pointerdown").slice(0, 80),
     ),

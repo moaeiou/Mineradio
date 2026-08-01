@@ -71,5 +71,9 @@ jobs:
           body: |
             # 📝 Release Note
             - Fixes and improvements
+            # ⚠️ 这个版本有危险
+            刚从上游同步过来的代码，经过验证他无法在我的主力电脑上启动！
+
+            请慎重使用等待修复版本发布。Windows应该没事。
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

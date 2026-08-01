@@ -659,7 +659,9 @@ function requestDesktopKeyboardFocus(reason) {
   )
     return false;
   try {
-    api.requestDesktopKeyboardFocus(reason || "renderer-pointerdown");
+    Promise.resolve(
+      api.requestDesktopKeyboardFocus(reason || "renderer-pointerdown"),
+    ).catch(function () {});
     return true;
   } catch (_) {
     return false;

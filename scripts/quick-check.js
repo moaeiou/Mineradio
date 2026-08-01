@@ -125,6 +125,25 @@ function runPlaybackSourceFallbackTransactionCheck() {
   process.stdout.write(result.stdout || "");
 }
 
+function runLocalMusicLibraryRegressionCheck() {
+  logStep("Persistent local FLAC library regression");
+  const testFile = path.join(
+    appRoot,
+    "tests",
+    "local-music-library-persistence.test.js",
+  );
+  const result = spawnSync(process.execPath, ["--test", testFile], {
+    cwd: appRoot,
+    encoding: "utf8",
+  });
+  if (result.status !== 0) {
+    process.stdout.write(result.stdout || "");
+    process.stderr.write(result.stderr || "");
+    fail(`persistent local FLAC library regression failed: ${rel(testFile)}`);
+  }
+  process.stdout.write(result.stdout || "");
+}
+
 function runWallpaperEngineIdleDisposeRegressionCheck() {
   logStep("Wallpaper Engine idle-dispose regression");
   const testFile = path.join(
@@ -145,31 +164,40 @@ function runWallpaperEngineIdleDisposeRegressionCheck() {
 }
 
 function runQQVipEntitlementRegressionCheck() {
-  logStep("QQ VIP entitlement regression");
-  const testFile = path.join(appRoot, "tests", "qq-vip-entitlement.test.js");
-  const result = spawnSync(process.execPath, [testFile], {
+  logStep("QQ/Kugou provider entitlement regression");
+  const testFiles = [
+    path.join(appRoot, "tests", "qq-vip-entitlement.test.js"),
+    path.join(appRoot, "tests", "kugou-vip-hardening.test.js"),
+    path.join(appRoot, "tests", "provider-entitlement-boundary.test.js"),
+  ];
+  const result = spawnSync(process.execPath, ["--test"].concat(testFiles), {
     cwd: appRoot,
     encoding: "utf8",
   });
   if (result.status !== 0) {
     process.stdout.write(result.stdout || "");
     process.stderr.write(result.stderr || "");
-    fail(`QQ VIP entitlement regression failed: ${rel(testFile)}`);
+    fail("QQ/Kugou provider entitlement regression failed");
   }
   process.stdout.write(result.stdout || "");
 }
 
 function runLoginEasterEggGateRegressionCheck() {
-  logStep("Login easter egg one-time gate regression");
-  const testFile = path.join(appRoot, "tests", "login-easter-egg-gate.test.js");
-  const result = spawnSync(process.execPath, [testFile], {
+  logStep("Login easter egg one-time gate and IME focus regression");
+  const testFiles = [
+    path.join(appRoot, "tests", "login-easter-egg-gate.test.js"),
+    path.join(appRoot, "tests", "login-easter-egg-ime-focus.test.js"),
+  ];
+  const result = spawnSync(process.execPath, ["--test"].concat(testFiles), {
     cwd: appRoot,
     encoding: "utf8",
   });
   if (result.status !== 0) {
     process.stdout.write(result.stdout || "");
     process.stderr.write(result.stderr || "");
-    fail(`login easter egg gate regression failed: ${rel(testFile)}`);
+    fail(
+      `login easter egg gate/IME regression failed: ${testFiles.map(rel).join(", ")}`,
+    );
   }
   process.stdout.write(result.stdout || "");
 }
@@ -237,20 +265,23 @@ function runHomeDailyRecommendationRegressionCheck() {
 }
 
 function runQishuiProviderDistributionRegressionCheck() {
-  logStep("Qishui provider distribution regression");
-  const testFile = path.join(
-    appRoot,
-    "tests",
-    "qishui-provider-distribution.test.js",
+  logStep(
+    "Qishui provider distribution, entitlement, and signed Passport QR regression",
   );
-  const result = spawnSync(process.execPath, [testFile], {
+  const testFiles = [
+    path.join(appRoot, "tests", "qishui-provider-distribution.test.js"),
+    path.join(appRoot, "tests", "qishui-passport-qr-login.test.js"),
+    path.join(appRoot, "tests", "qishui-entitlement-cache.test.js"),
+    path.join(appRoot, "tests", "qishui-tier-rights.test.js"),
+  ];
+  const result = spawnSync(process.execPath, ["--test"].concat(testFiles), {
     cwd: appRoot,
     encoding: "utf8",
   });
   if (result.status !== 0) {
     process.stdout.write(result.stdout || "");
     process.stderr.write(result.stderr || "");
-    fail(`Qishui provider distribution regression failed: ${rel(testFile)}`);
+    fail("Qishui provider distribution/entitlement/QR regression failed");
   }
   process.stdout.write(result.stdout || "");
 }
@@ -714,15 +745,13 @@ function checkWallpaperEngineImportGuard() {
     !/hostElevationProbe/.test(runtimeText) ||
     !/MINERADIO_WE_CONTROL_TARGET/.test(runtimeText) ||
     !/MINERADIO_WE_CONTROL_COMMAND_LINE/.test(runtimeText) ||
-    !/systemMemory\.probeProcessElevation/.test(mainText) ||
-    !/operation\s*=\s*\+\+wallpaperEngineCaptureOperation[\s\S]{0,320}probeProcessElevation\(\)[\s\S]{0,240}operation\s*!==\s*wallpaperEngineCaptureOperation/.test(
+    !/hostElevationProbe:\s*systemMemory\.probeProcessElevation/.test(
       mainText,
     ) ||
-    !/WALLPAPER_ENGINE_HOST_ELEVATED/.test(mainText) ||
-    !/WALLPAPER_ENGINE_HOST_ELEVATED/.test(rendererText)
+    /WALLPAPER_ENGINE_HOST_ELEVATED/.test(mainText)
   ) {
     fail(
-      "Wallpaper Engine Scene runtime must use the signed official engine, Explorer-parent medium integrity, unique pop-out control, and a captured window source",
+      "Wallpaper Engine Scene runtime must use the signed official engine, route elevated hosts through the Explorer medium-integrity broker, and retain the captured window source",
     );
   }
   const dwmSurfaceBlock = runtimeText.slice(
@@ -4084,6 +4113,18 @@ function checkQishuiProviderGuard() {
     path.join(appRoot, "desktop", "main.js"),
     "utf8",
   );
+  const desktopPreloadText = fs.readFileSync(
+    path.join(appRoot, "desktop", "preload.js"),
+    "utf8",
+  );
+  const qishuiPassportText = fs.readFileSync(
+    path.join(appRoot, "qishui-auth-v6.js"),
+    "utf8",
+  );
+  const qishuiQrBridgeText = fs.readFileSync(
+    path.join(appRoot, "qishui-qr-login.js"),
+    "utf8",
+  );
   const indexText = fs.readFileSync(
     path.join(appRoot, "public", "index.html"),
     "utf8",
@@ -4110,11 +4151,14 @@ function checkQishuiProviderGuard() {
     fail("Qishui playback must not depend on third-party VIP/proxy endpoints");
   }
   if (
-    !/search: configured \|\| QISHUI_PUBLIC_ENABLED/.test(qishuiText) ||
-    !/请先登录本机汽水音乐 PC 客户端/.test(qishuiText)
+    !/search: tokenConfigured \|\| webSession \|\| QISHUI_PUBLIC_ENABLED/.test(
+      qishuiText,
+    ) ||
+    !/loggedIn: webSession/.test(qishuiText) ||
+    !/请使用抖音 App 扫描 Mineradio 中的汽水官方二维码/.test(qishuiText)
   ) {
     fail(
-      "Qishui status must keep public search separate from the required local SodaMusic session import",
+      "Qishui status must keep public catalogue readiness separate from an authenticated Passport Web session",
     );
   }
   const oldQishuiCredentialPrompt = new RegExp(
@@ -4123,12 +4167,13 @@ function checkQishuiProviderGuard() {
   if (
     !/function qishuiPublicSearchReady/.test(qishuiLoginText) ||
     !/function openQishuiPublicSearch/.test(qishuiLoginText) ||
-    !/hasQishuiLocalImportBridge/.test(qishuiLoginText) ||
-    !/refreshBtn\.onclick = openQishuiWebLogin;/.test(qishuiLoginText) ||
+    !/refreshBtn\.onclick = isQishui \? openQishuiWebLogin :/.test(
+      qishuiLoginText,
+    ) ||
     oldQishuiCredentialPrompt.test(qishuiLoginText)
   ) {
     fail(
-      "Qishui login modal must expose the desktop local-session import bridge without hiding public search elsewhere",
+      "Qishui login modal must retain public search separately from official Passport QR authentication",
     );
   }
   if (
@@ -4140,100 +4185,58 @@ function checkQishuiProviderGuard() {
     );
   }
   if (
-    !/QISHUI_OFFICIAL_CLIENT_DATA_DIRS/.test(desktopMainText) ||
-    !/function extractQishuiCookieHeaderFromCookieDatabase/.test(
-      desktopMainText,
-    ) ||
-    !/function extractQishuiSessionIdFromCookieDatabase/.test(
-      desktopMainText,
-    ) ||
-    !/function readQishuiOfficialClientCookieDatabase/.test(desktopMainText) ||
-    !/importedOfficialClient: true/.test(desktopMainText) ||
-    !/QISHUI_LOCAL_COOKIE_DB_LOCKED/.test(desktopMainText) ||
-    !/QISHUI_LOCAL_COOKIE_NOT_FOUND/.test(desktopMainText)
+    !/require\('\.\/qishui-qr-login'\)/.test(serverText) ||
+    !/\/api\/qishui\/login\/qrcode/.test(serverText) ||
+    !/\/api\/qishui\/login\/check/.test(serverText) ||
+    /pn === '\/api\/qishui\/login\/(?:token|cookie)'/.test(serverText)
   ) {
     fail(
-      "Qishui desktop login must read and report the complete local SodaMusic PC session",
+      "Qishui login server must expose only the signed Passport QR create/check boundary",
     );
   }
   if (
-    !/function readSavedQishuiCookieHeader\(\)/.test(desktopMainText) ||
-    !/const saved = readSavedQishuiCookieHeader\(\)/.test(desktopMainText) ||
-    !/savedStatus = await handleQishuiStatus\(saved\.cookie\)/.test(
-      desktopMainText,
-    ) ||
-    !/savedStatus\.loggedIn && savedStatus\.webSession/.test(desktopMainText) ||
-    !/persistedSession: true/.test(desktopMainText)
+    !/persist:mineradio-qishui-auth-v6/.test(qishuiPassportText) ||
+    !/a_bogus/.test(qishuiPassportText) ||
+    !/check_qrconnect/.test(qishuiPassportText) ||
+    !/secondVerify/.test(qishuiPassportText) ||
+    !/createQishuiQrLoginBridge/.test(qishuiQrBridgeText)
   ) {
     fail(
-      "Qishui desktop login must validate the cached Mineradio copy when the official client is temporarily unavailable",
-    );
-  }
-  const officialCookieReaderStart = desktopMainText.indexOf(
-    "async function readQishuiOfficialClientCookieHeader",
-  );
-  const officialCookieReaderEnd = desktopMainText.indexOf(
-    "\nfunction kugouCookieHasLogin",
-    officialCookieReaderStart,
-  );
-  const officialCookieReaderText = desktopMainText.slice(
-    officialCookieReaderStart,
-    officialCookieReaderEnd,
-  );
-  if (
-    officialCookieReaderStart < 0 ||
-    officialCookieReaderEnd <= officialCookieReaderStart ||
-    !/let lastLocked = null/.test(officialCookieReaderText) ||
-    /if \(direct && direct\.locked\) return/.test(officialCookieReaderText) ||
-    !/lastLocked \|\| last \|\| \{\}/.test(officialCookieReaderText)
-  ) {
-    fail(
-      "Qishui official-client import must try every cookie database and Electron session fallback before reporting a locked database",
-    );
-  }
-  const qishuiLocalLoginStart = desktopMainText.indexOf(
-    "async function openQishuiMusicLoginWindow",
-  );
-  const qishuiLocalLoginEnd = desktopMainText.indexOf(
-    "\nasync function clearQishuiMusicLoginSession",
-    qishuiLocalLoginStart,
-  );
-  const qishuiLocalLoginText = desktopMainText.slice(
-    qishuiLocalLoginStart,
-    qishuiLocalLoginEnd,
-  );
-  if (
-    qishuiLocalLoginStart < 0 ||
-    qishuiLocalLoginEnd <= qishuiLocalLoginStart ||
-    qishuiLocalLoginText.indexOf("readQishuiOfficialClientCookieHeader()") >
-      qishuiLocalLoginText.indexOf("readSavedQishuiCookieHeader()") ||
-    /openQishuiOfficialWebLoginWindow\s*\(/.test(qishuiLocalLoginText) ||
-    /createQishuiPcQrLogin\s*\(/.test(qishuiLocalLoginText)
-  ) {
-    fail(
-      "Qishui normal login route must be strict local-first and must never fall through to QR/OAuth",
+      "Qishui Passport QR must retain the isolated signing runtime, a_bogus validation, polling, persistence, and MFA bridge",
     );
   }
   if (
-    !/本机汽水会话已导入/.test(accountLogoutText) ||
-    !/可同步我的喜欢、歌单并直接播放/.test(accountLogoutText) ||
-    /授权: '\s*\+/.test(accountLogoutText) ||
-    /OpenAPI token/.test(accountLogoutText)
+    !/pollQishuiQr/.test(qishuiLoginText) ||
+    !/请使用抖音 App 扫码并确认登录/.test(qishuiLoginText) ||
+    /读取本机汽水|本机会话|Token 导入|submitQishuiTokenLogin|openQishuiMusicLogin/.test(
+      qishuiLoginText,
+    )
+  ) {
+    fail("Qishui login UI must use only the official in-panel QR flow");
+  }
+  if (
+    /ipcMain\.handle\('qishui-music-open-login'/.test(desktopMainText) ||
+    /openQishuiMusicLogin/.test(desktopPreloadText) ||
+    !/await qishuiQrLogin\.clear\(\)/.test(desktopMainText)
   ) {
     fail(
-      "Qishui account status must describe the imported local PC session without exposing internal ids",
+      "Qishui desktop bridge must remove the old login-window IPC and await Passport partition cleanup",
     );
   }
   if (
-    !/canOpenQishuiOfficialWindow/.test(qishuiLoginText) ||
-    !/openQishuiWebLogin/.test(qishuiLoginText) ||
-    !/读取本机汽水/.test(qishuiLoginText) ||
-    !/本机汽水登录态导入失败/.test(qishuiLoginText) ||
-    /扫码连接汽水|汽水扫码连接/.test(qishuiLoginText)
+    !/汽水音乐已扫码登录/.test(accountLogoutText) ||
+    !/按账号权益播放/.test(accountLogoutText) ||
+    /本机汽水会话|OpenAPI token/.test(accountLogoutText)
   ) {
     fail(
-      "Qishui login UI must expose only the local SodaMusic session import path",
+      "Qishui account status must describe the official QR session without exposing legacy import modes",
     );
+  }
+  if (
+    !/官方扫码 \/ 抖音确认/.test(indexText) ||
+    /本地会话 \/ PC 客户端/.test(indexText)
+  ) {
+    fail("Qishui login node must identify the official QR flow");
   }
   if (
     !/\/luna\/pc\/me/.test(qishuiText) ||
@@ -6615,33 +6618,46 @@ function checkProviderEntitlementBoundaryGuard() {
     !/function normalizeKugouVipPayloadV2/.test(kugouText) ||
     /\/vip\|member\|music_pack\//.test(kugouText) ||
     /const vipText = Object\.keys/.test(kugouText) ||
-    !/const apiMembershipKnown = payloadObjects\.some\(kugouObjectHasMembershipSignal\)/.test(
+    !/const apiMembershipKnown = apiStates\.length > 0/.test(kugouText) ||
+    !/membershipVerified:\s*apiMembershipKnown/.test(kugouText) ||
+    !/const isWebRolePayload = membershipOrigin === 'kugou-web-roleinfo'/.test(
       kugouText,
     ) ||
-    !/membershipVerified:\s*membershipKnown/.test(kugouText) ||
-    !/membershipSource:\s*apiMembershipKnown[\s\S]*?'kugou-vip-api'/.test(
+    !/const freshMembershipSource = isWebRolePayload \? 'kugou-web-roleinfo' : 'kugou-vip-api'/.test(
+      kugouText,
+    ) ||
+    !/membershipSource:\s*apiMembershipKnown[\s\S]*?freshMembershipSource[\s\S]*?'kugou-cookie-hint'/.test(
       kugouText,
     )
   ) {
     fail(
-      "Kugou membership must come from explicit positive API or cookie fields, never field-name text",
+      "Kugou membership must come from account-scoped API entitlement records; cookies may only provide a non-authoritative hint",
     );
   }
   if (
     !/function kugouPlaybackCacheScope/.test(kugouText) ||
     !/kugouPlaybackCacheScope\(auth, membership\)/.test(kugouText) ||
-    !/membership\.isVip \? '1' : '65530'/.test(kugouText)
+    !/function kugouVipCacheKey/.test(kugouText) ||
+    !/crypto\.createHash\('sha256'\)\.update\(identity\)\.digest\('hex'\)/.test(
+      kugouText,
+    ) ||
+    !/rights\.canPlaySvipTracks[\s\S]{0,180}rights\.canPlayVipTracks[\s\S]{0,180}rights\.canPlayMusicPackageTracks/.test(
+      kugouText,
+    )
   ) {
     fail(
-      "Kugou URL resolution must isolate caches by account and only send VIP mode for verified members",
+      "Kugou membership and URL resolution caches must be isolated by the full account identity and verified entitlement tier",
     );
   }
   if (
     !/kugouPlaybackParamsRequireVip\(params\)/.test(kugouText) ||
-    !/memberTrack && !membership\.isVip/.test(kugouText) ||
-    !/effectiveQuality = membership\.isVip \? requestedQuality : 'standard'/.test(
+    !/const canAttemptMemberTrack = membershipRights\.canPlayVipTracks[\s\S]{0,100}membershipRights\.canPlayMusicPackageTracks/.test(
       kugouText,
-    )
+    ) ||
+    !/memberTrack && !canAttemptMemberTrack/.test(kugouText) ||
+    !/function kugouMembershipRights/.test(kugouText) ||
+    !/function kugouEffectiveQuality/.test(kugouText) ||
+    !/if \(!rights\.canPlayVipTracks\) return 'standard'/.test(kugouText)
   ) {
     fail(
       "Kugou member tracks and premium qualities must be denied or downgraded for ordinary accounts",
@@ -6662,10 +6678,15 @@ function checkProviderEntitlementBoundaryGuard() {
   if (
     !/function qishuiMembershipFromData/.test(qishuiText) ||
     !/function qishuiTrackRequiresVip/.test(qishuiText) ||
+    !/function qishuiStreamRequiredTier/.test(qishuiText) ||
+    !/function qishuiRequiredTierAllowed/.test(qishuiText) ||
+    !/QISHUI_TRACK_SVIP_KEYS/.test(qishuiText) ||
+    !/function qishuiApplyMembershipObservation/.test(qishuiText) ||
+    !/membership_unknown/.test(qishuiText) ||
     !/vip_required/.test(qishuiText)
   ) {
     fail(
-      "Qishui must strictly separate account membership from track-level VIP restrictions",
+      "Qishui must strictly separate account membership from track-level VIP/SVIP restrictions and retain only bounded official evidence",
     );
   }
   if (
@@ -6837,6 +6858,7 @@ function checkQQVipStatusSyncGuard() {
   if (
     !/function refreshQQVipStatusNow/.test(loginStatusText) ||
     !/function qqLoginNeedsAuthorizationRefresh/.test(loginStatusText) ||
+    !/function qqMembershipNeedsSync/.test(loginStatusText) ||
     !/forceVip=1/.test(loginStatusText) ||
     !/window\.addEventListener\('focus'/.test(loginStatusText) ||
     !/visibilitychange/.test(loginStatusText)
@@ -6846,7 +6868,7 @@ function checkQQVipStatusSyncGuard() {
     );
   }
   if (
-    !/membershipKnown === false/.test(loginStatusText) ||
+    !/membershipKnown !== true/.test(loginStatusText) ||
     !/Object\.assign\(\{\}, qqLoginStatus,[\s\S]{0,180}membershipStale:\s*true/.test(
       loginStatusText,
     ) ||
@@ -6858,14 +6880,65 @@ function checkQQVipStatusSyncGuard() {
   }
   if (
     !/openQQMusicLoginWindow\(owner, options\)/.test(mainText) ||
+    !/const initialCookie = await readQQLoginCookieHeader\(cookieSession\);[\s\S]{0,220}qqCookieHasPlaybackLogin\(initialCookie\)[\s\S]{0,260}options\.forceReauth/.test(
+      mainText,
+    ) ||
     !/options\.forceReauth[\s\S]{0,180}clearStorageData/.test(mainText) ||
     !/openQQMusicLogin:\s*\(options\)/.test(preloadText) ||
-    !/forceReauth:\s*!!\(qqLoginStatus && qqLoginStatus\.loggedIn\)/.test(
+    !/forceReauth:\s*!!\(qqLoginStatus && qqLoginStatus\.authorizationIncomplete && qqLoginStatus\.playbackKeyReady === false\)/.test(
+      loginFlowText,
+    ) ||
+    /forceReauth:\s*!!\(qqLoginStatus && qqLoginStatus\.loggedIn\)/.test(
       loginFlowText,
     )
   ) {
     fail(
-      "QQ membership resync must force a fresh official login instead of reusing a stale playback key",
+      "QQ reauthorization must only clear an explicitly incomplete playback session, never every logged-in session",
+    );
+  }
+  if (
+    !/function isTrustedQQLoginUrl/.test(mainText) ||
+    !/action:\s*'allow'[\s\S]{0,500}partition:\s*QQ_LOGIN_PARTITION/.test(
+      mainText,
+    ) ||
+    !/playbackFinalizePending[\s\S]{0,700}setTimeout\(resolveDelay,\s*450\)/.test(
+      mainText,
+    ) ||
+    !/const showLoginWindow = \(\) =>[\s\S]{0,260}loginWindow\.show\(\)/.test(
+      mainText,
+    ) ||
+    !/showWatchdog = setTimeout\(showLoginWindow,\s*2500\)/.test(mainText) ||
+    !/const loadQQOfficialLoginEntry = async \(\) =>[\s\S]{0,700}cookieSession\.clearCache\(\)[\s\S]{0,420}QQ_LOGIN_FALLBACK_URL/.test(
+      mainText,
+    ) ||
+    /loginWindow\.loadURL\('https:\/\/y\.qq\.com\/n\/ryqq\/player'\)/.test(
+      mainText,
+    ) ||
+    !/function qqLoginCompletionFromCookie[\s\S]{0,500}QQ_PLAYBACK_AUTH_INCOMPLETE/.test(
+      mainText,
+    ) ||
+    !/resolve\(qqLoginCompletionFromCookie\(cookie\)\)/.test(mainText)
+  ) {
+    fail(
+      "QQ OAuth must stay in its official window, keep trusted popups on one partition, and reject web-only partial sessions",
+    );
+  }
+  if (
+    !/async function fetchQQVipStatus[\s\S]{0,220}const musicKey = qqCookiePlaybackKey\(cookieObj\)/.test(
+      serverText,
+    ) ||
+    !/async function handleQQSongUrl[\s\S]{0,500}const playbackKey = qqCookiePlaybackKey\(cookieObj\);\s*const musicKey = playbackKey;/.test(
+      serverText,
+    ) ||
+    !/if \(!qqCookieUin\(obj\) \|\| !qqCookiePlaybackKey\(obj\)\)/.test(
+      serverText,
+    ) ||
+    !/function qqCookieUin[\s\S]{0,180}!!obj\.wxopenid[\s\S]{0,180}obj\.wxuin/.test(
+      serverText,
+    )
+  ) {
+    fail(
+      "QQ VIP and vkey requests must use a strict QQ Music playback key and must not persist p_skey-only sessions",
     );
   }
   if (
@@ -6892,10 +6965,13 @@ function checkQQVipStatusSyncGuard() {
     !/qqNeedsMembershipSync/.test(loginFlowText) ||
     !/同步会员/.test(loginFlowText) ||
     !/重新打开官方窗口同步会员/.test(loginFlowText) ||
-    !/qqNeedsAuthRefresh \|\| qqNeedsMembershipSync/.test(loginFlowText)
+    !/qqNeedsAuthRefresh \? openQQWebLogin : \(qqLoginStatus\.loggedIn \? refreshQr : openQQWebLogin\)/.test(
+      loginFlowText,
+    ) ||
+    /qqNeedsAuthRefresh \|\| qqNeedsMembershipSync/.test(loginFlowText)
   ) {
     fail(
-      "QQ login panel must show membership-aware status and use reauthorization when the local QQ session is stale",
+      "QQ login panel must reauthorize only missing playback credentials and use the forceVip status probe for membership sync",
     );
   }
   if (
@@ -7085,16 +7161,25 @@ async function checkProviderAuthCookiePathGuard() {
     );
   }
   if (
-    !/withStartupTimeout\([\s\S]{0,180}win\.loadURL\(targetUrl\)/.test(
+    !/function createTrustedMainDocumentReadySignal\(win, expectedUrl\)/.test(
       mainText,
     ) ||
+    !/isTrustedMainDocumentUrl\(candidateUrl\)/.test(mainText) ||
+    !/Promise\.race\(\[observedLoadPromise, readySignal\.promise\]\)/.test(
+      mainText,
+    ) ||
+    !/if \(readySignal\.isReady\(\)\) return;[\s\S]{0,100}webContents\.stop\(\)/.test(
+      mainText,
+    ) ||
+    !/finally \{[\s\S]{0,80}readySignal\.cancel\(\)/.test(mainText) ||
+    !/removeListener\('did-navigate'/.test(mainText) ||
     !/for \(let attempt = 1; attempt <= 2; attempt \+= 1\)/.test(mainText) ||
     !/did-fail-load/.test(mainText) ||
     !/render-process-gone/.test(mainText) ||
     !/unresponsive/.test(mainText)
   ) {
     fail(
-      "Main window navigation must be bounded, retry once, and record renderer failure signals",
+      "Main window navigation must accept a trusted committed document, clean up readiness listeners, retry once, and preserve real failure signals",
     );
   }
   if (
@@ -7134,12 +7219,14 @@ async function checkProviderAuthCookiePathGuard() {
     );
   }
   if (
-    !/resolve\(qqCookieHasLogin\(cookie\)[\s\S]{0,140}partial: !qqCookieHasPlaybackLogin\(cookie\)/.test(
+    !/function qqLoginCompletionFromCookie[\s\S]{0,420}partial:\s*true[\s\S]{0,160}QQ_PLAYBACK_AUTH_INCOMPLETE/.test(
       mainText,
-    )
+    ) ||
+    !/resolve\(qqLoginCompletionFromCookie\(cookie\)\)/.test(mainText) ||
+    /partial:\s*true,\s*cookie/.test(mainText)
   ) {
     fail(
-      "QQ login must return partial:true when only web account cookies are available",
+      "QQ login must report a web-only session as incomplete without returning its cookie for persistence",
     );
   }
   if (
@@ -11845,6 +11932,7 @@ function runMainStartupRecoveryCheck() {
         MINERADIO_STARTUP_QA_USER_DATA: qaUserData,
         MINERADIO_STARTUP_TEST_SERVER_DELAY_MS: "4500",
         MINERADIO_STARTUP_TEST_FAIL_FIRST_NAV: "1",
+        MINERADIO_STARTUP_TEST_STALL_LOAD_PROMISE: "1",
         MINERADIO_STARTUP_QA_HIDDEN: "1",
         MINERADIO_STARTUP_QA_EXIT_MS: "700",
       },
@@ -11868,24 +11956,42 @@ function runMainStartupRecoveryCheck() {
     const windowVisibleAt = firstAt("window-visible");
     const serverReadyAt = firstAt("server-ready");
     const retryAt = firstAt("navigation-retry");
+    const navigationReadyAt = firstAt("navigation-ready");
     const readyAt = firstAt("ready");
+    const retryEvents = events.filter(
+      (item) => item && item.phase === "navigation-retry",
+    );
+    const navigationAttempts = events.filter(
+      (item) => item && item.phase === "navigation-attempt",
+    );
+    const secondNavigationAt = navigationAttempts[1]
+      ? Number(navigationAttempts[1].at) || 0
+      : 0;
+    const failedAt = firstAt("failed");
     if (
       state.phase !== "ready" ||
       !windowCreatedAt ||
       !windowVisibleAt ||
       !serverReadyAt ||
       !retryAt ||
+      !navigationReadyAt ||
       !readyAt ||
+      retryEvents.length !== 1 ||
+      navigationAttempts.length !== 2 ||
+      !secondNavigationAt ||
+      failedAt ||
       windowVisibleAt >= serverReadyAt ||
       readyAt <= retryAt ||
+      navigationReadyAt < secondNavigationAt ||
+      navigationReadyAt - secondNavigationAt >= 15000 ||
       windowVisibleAt - Number(state.startedAt || 0) > 5000
     ) {
       fail(
-        `Real main-entry startup recovery invariants failed: ${JSON.stringify({ state, windowCreatedAt, windowVisibleAt, serverReadyAt, retryAt, readyAt })}`,
+        `Real main-entry startup recovery invariants failed: ${JSON.stringify({ state, windowCreatedAt, windowVisibleAt, serverReadyAt, retryAt, navigationReadyAt, readyAt, secondNavigationAt, failedAt })}`,
       );
     }
     console.log(
-      `[OK] Startup shell visible in ${windowVisibleAt - state.startedAt}ms, before delayed server at ${serverReadyAt - state.startedAt}ms; injected first navigation failure recovered and reached ready in ${readyAt - state.startedAt}ms.`,
+      `[OK] Startup shell visible in ${windowVisibleAt - state.startedAt}ms; injected first navigation failure recovered, stalled loadURL Promise was accepted by trusted navigation readiness in ${navigationReadyAt - secondNavigationAt}ms.`,
     );
   } finally {
     if (fs.existsSync(qaUserData))
@@ -12722,6 +12828,7 @@ async function main() {
   runNodeSyntaxCheck(jsCheckFiles());
   runPlaybackAudioGraphRegressionCheck();
   runPlaybackSourceFallbackTransactionCheck();
+  runLocalMusicLibraryRegressionCheck();
   runWallpaperEngineIdleDisposeRegressionCheck();
   runQQVipEntitlementRegressionCheck();
   runLoginEasterEggGateRegressionCheck();

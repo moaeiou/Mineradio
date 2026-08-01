@@ -93,10 +93,28 @@ function withHttpsMock(handler, task) {
     });
 }
 
+function isKugouMembershipEndpoint(pathname) {
+  return [
+    "/v1/get_union_vip",
+    "/v1/vipuser_sub",
+    "/kugouvip/v2/batch_union_vipinfo",
+    "/kugouvip/v1/batch_union_vipinfo",
+    "/mobile/vipinfo",
+  ].includes(String(pathname || ""));
+}
+
+function isKugouWebRoleInfoEndpoint(pathname) {
+  return String(pathname || "") === "/recharge/roleinfo";
+}
+
+function unknownKugouWebRoleInfo() {
+  return { body: { errno: 105, error_code: 20017 } };
+}
+
 function qishuiTrackPayload(id, requiresVip, mediaUrl) {
   return {
     data: {
-      membership: {
+      user_membership: {
         is_vip: false,
         is_svip: false,
         vip_type: 0,
@@ -205,14 +223,16 @@ function testKugouMembershipNormalization() {
     { status: 1, data: {} },
     staleCookieFallback,
   );
-  assertVipMembership(
+  assertNoMembership(
     unknownApiShape,
-    "Kugou unknown API shape preserving explicit positive cookie fallback",
+    "Kugou unknown API state must not confirm a cookie VIP hint",
   );
+  assert.strictEqual(unknownApiShape.membershipKnown, false);
+  assert.strictEqual(unknownApiShape.membershipHintLevel, "vip");
   assert.strictEqual(
     unknownApiShape.membershipSource,
-    "kugou-cookie-explicit",
-    "Kugou unknown API data must not pretend to be verified API membership",
+    "kugou-cookie-hint",
+    "Kugou unknown API data may expose only a pending cookie hint",
   );
 }
 
@@ -227,6 +247,17 @@ function testKugouPlaybackBoundaries() {
     "kugouPlaybackCacheScope",
     "Kugou",
   );
+  const effectiveQuality = requireTestFunction(
+    kugou,
+    "kugouEffectiveQuality",
+    "Kugou",
+  );
+  const membershipRights = requireTestFunction(
+    kugou,
+    "kugouMembershipRights",
+    "Kugou",
+  );
+  const activeExpiry = Date.now() + 60 * 60 * 1000;
 
   assert.strictEqual(
     requiresVip({
@@ -296,6 +327,207 @@ function testKugouPlaybackBoundaries() {
     !scopeA.includes(accountA.token),
     "Kugou cache scope must not expose the raw token",
   );
+
+  assert.strictEqual(
+    effectiveQuality("hires", { isVip: false, isSvip: false }),
+    "standard",
+  );
+  assert.strictEqual(
+    effectiveQuality("hires", {
+      membershipKnown: true,
+      membershipVerified: true,
+      playbackReady: true,
+      isVip: true,
+      isSvip: false,
+      expiresAt: activeExpiry,
+    }),
+    "lossless",
+  );
+  assert.strictEqual(
+    effectiveQuality("hires", {
+      membershipKnown: true,
+      membershipVerified: true,
+      playbackReady: true,
+      isVip: true,
+      isSvip: true,
+      expiresAt: activeExpiry,
+    }),
+    "hires",
+  );
+  assert.strictEqual(
+    membershipRights({
+      membershipKnown: true,
+      membershipVerified: true,
+      playbackReady: true,
+      isVip: true,
+      isSvip: false,
+      expiresAt: activeExpiry,
+    }).maxQuality,
+    "lossless",
+    "Kugou VIP must not silently receive SVIP-only Hi-Res rights",
+  );
+  assert.strictEqual(
+    membershipRights({
+      membershipKnown: true,
+      membershipVerified: true,
+      playbackReady: true,
+      isVip: true,
+      isSvip: true,
+      expiresAt: activeExpiry,
+    }).maxQuality,
+    "hires",
+    "Kugou SVIP must retain its higher quality tier",
+  );
+}
+
+async function testKugouWebRoleInfoFlow() {
+  const cookie = [
+    "userid=72001",
+    "KuGoo=KugooID%3D72001%26NickName%3DWebOnly%26Pic%3Dhttps%253A%252F%252Favatar.example%252Fkugou.png",
+  ].join("; ");
+  const paths = [];
+  await withHttpsMock(
+    ({ url, options }) => {
+      const parsed = new URL(url);
+      paths.push(parsed.pathname);
+      assert.strictEqual(
+        parsed.hostname,
+        "vip.kugou.com",
+        "web-only Kugou membership must use the official VIP host",
+      );
+      assert.strictEqual(
+        parsed.pathname,
+        "/recharge/roleinfo",
+        "web-only Kugou membership must use the official roleinfo endpoint",
+      );
+      assert(
+        String(
+          (options.headers &&
+            (options.headers.Cookie || options.headers.cookie)) ||
+            "",
+        ).includes("userid=72001"),
+        "official roleinfo request must carry the current Kugou cookie",
+      );
+      assert.strictEqual(
+        String(
+          (options.headers &&
+            (options.headers["X-Requested-With"] ||
+              options.headers["x-requested-with"])) ||
+            "",
+        ),
+        "XMLHttpRequest",
+        "official roleinfo request must identify itself as an XMLHttpRequest",
+      );
+      return {
+        body: {
+          status: 1,
+          data: {
+            role: 1,
+            producttype: 1,
+            rawVipEndTime: "2099-12-31 23:59:59",
+          },
+        },
+      };
+    },
+    async () => {
+      const status = await kugou.getKugouLoginInfo(cookie);
+      assert.strictEqual(
+        status.loggedIn,
+        true,
+        "a web cookie session must remain logged in",
+      );
+      assert.strictEqual(
+        status.playbackReady,
+        false,
+        "a web-only session must not pretend to have a playback token",
+      );
+      assert.strictEqual(
+        status.isVip,
+        true,
+        "official roleinfo may display the verified VIP badge",
+      );
+      assert.strictEqual(
+        status.vipLevel,
+        "vip",
+        "role 1 must display the VIP tier",
+      );
+      assert.strictEqual(
+        status.membershipKnown,
+        true,
+        "official roleinfo must produce a known membership state",
+      );
+      assert.strictEqual(
+        status.membershipVerified,
+        true,
+        "official roleinfo must verify displayed membership",
+      );
+      assert.strictEqual(
+        status.membershipSource,
+        "kugou-web-roleinfo",
+        "official roleinfo must remain source-labelled",
+      );
+      assert.strictEqual(
+        status.membershipRights.canPlayVipTracks,
+        false,
+        "a web-only badge must not grant playback without a playback token",
+      );
+      assert.strictEqual(
+        status.membershipRights.maxQuality,
+        "standard",
+        "a web-only badge must not grant paid audio quality",
+      );
+    },
+  );
+  assert.deepStrictEqual(
+    paths,
+    ["/recharge/roleinfo"],
+    "known web membership must short-circuit gateway probes",
+  );
+}
+
+async function testKugouSessionCacheInvalidation() {
+  const cookie = [
+    "userid=72002",
+    "token=roleinfo-cache-token",
+    "kg_mid=roleinfo-cache-mid",
+    "KuGoo=KugooID%3D72002%26NickName%3DCacheUser%26Pic%3Dhttps%253A%252F%252Favatar.example%252Fcache.png",
+  ].join("; ");
+  let roleInfoRequests = 0;
+  kugou.clearKugouSessionCaches();
+  await withHttpsMock(
+    ({ url }) => {
+      const parsed = new URL(url);
+      if (!isKugouWebRoleInfoEndpoint(parsed.pathname)) {
+        throw new Error(
+          "Unexpected request while checking Kugou membership cache: " +
+            parsed.pathname,
+        );
+      }
+      roleInfoRequests += 1;
+      return {
+        body: {
+          status: 1,
+          data: { role: 1, rawVipEndTime: "2099-12-31 23:59:59" },
+        },
+      };
+    },
+    async () => {
+      assert.strictEqual((await kugou.getKugouLoginInfo(cookie)).isVip, true);
+      assert.strictEqual((await kugou.getKugouLoginInfo(cookie)).isVip, true);
+      assert.strictEqual(
+        roleInfoRequests,
+        1,
+        "one session should reuse its bounded roleinfo cache",
+      );
+      kugou.clearKugouSessionCaches();
+      assert.strictEqual((await kugou.getKugouLoginInfo(cookie)).isVip, true);
+    },
+  );
+  assert.strictEqual(
+    roleInfoRequests,
+    2,
+    "clearing or replacing the Kugou session must force a fresh official membership probe",
+  );
 }
 
 async function testKugouPlaybackEntitlementBoundary() {
@@ -305,7 +537,9 @@ async function testKugouPlaybackEntitlementBoundary() {
   await withHttpsMock(
     ({ url }) => {
       const parsed = new URL(url);
-      if (parsed.pathname === "/v1/get_union_vip") {
+      if (isKugouWebRoleInfoEndpoint(parsed.pathname))
+        return unknownKugouWebRoleInfo();
+      if (isKugouMembershipEndpoint(parsed.pathname)) {
         return {
           body: {
             status: 1,
@@ -370,7 +604,9 @@ async function testKugouPlaybackEntitlementBoundary() {
   await withHttpsMock(
     ({ url }) => {
       const parsed = new URL(url);
-      if (parsed.pathname === "/v1/get_union_vip") {
+      if (isKugouWebRoleInfoEndpoint(parsed.pathname))
+        return unknownKugouWebRoleInfo();
+      if (isKugouMembershipEndpoint(parsed.pathname)) {
         return {
           body: {
             status: 1,
@@ -442,6 +678,8 @@ async function testKugouPlaybackEntitlementBoundary() {
   await withHttpsMock(
     ({ url }) => {
       const parsed = new URL(url);
+      if (isKugouWebRoleInfoEndpoint(parsed.pathname))
+        return unknownKugouWebRoleInfo();
       if (parsed.pathname === "/v1/get_union_vip") {
         return {
           body: {
@@ -512,6 +750,75 @@ async function testKugouPlaybackEntitlementBoundary() {
     "verified Kugou VIP may request the full entitlement mode",
   );
 
+  const musicPackageCookie =
+    "userid=71006; token=music-package-token; kg_mid=music-package-mid";
+  let musicPackageFreePart = "";
+  await withHttpsMock(
+    ({ url }) => {
+      const parsed = new URL(url);
+      if (isKugouWebRoleInfoEndpoint(parsed.pathname)) {
+        return {
+          body: {
+            status: 1,
+            data: {
+              role: 31,
+              musicEndTime: "2099-12-31 23:59:59",
+            },
+          },
+        };
+      }
+      if (parsed.pathname === "/v5/url") {
+        musicPackageFreePart = parsed.searchParams.get("IsFreePart") || "";
+        return {
+          body: {
+            status: 1,
+            url: "https://media.example/kugou-music-package.mp3",
+          },
+        };
+      }
+      throw new Error(
+        "Unexpected Kugou music-package request: " + parsed.pathname,
+      );
+    },
+    async () => {
+      const result = await kugou.handleKugouSongUrl(
+        {
+          hash: "music-package-track-hash",
+          quality: "standard",
+          vipRequired: true,
+          privilege: 10,
+          fee: 1,
+        },
+        musicPackageCookie,
+      );
+      assert.strictEqual(
+        result.playable,
+        true,
+        "a verified music package may ask the official URL endpoint for a covered track",
+      );
+      assert.strictEqual(
+        result.vipLevel,
+        "none",
+        "a music package must not be mislabeled as Kugou VIP",
+      );
+      assert.strictEqual(
+        result.hasMusicPackage,
+        true,
+        "the independent music-package identity must be preserved",
+      );
+      assert.strictEqual(
+        result.level,
+        "standard",
+        "a music package must not silently receive VIP lossless quality",
+      );
+    },
+  );
+  assert.strictEqual(
+    musicPackageFreePart,
+    "0",
+    "a verified music package may request the full covered-song response",
+  );
+
   const fallbackCookie =
     "userid=71004; token=fallback-vip-token; kg_mid=fallback-vip-mid; KuGoo=KugooID%3D71004%26NickName%3DVIP";
   const membershipPaths = [];
@@ -519,6 +826,8 @@ async function testKugouPlaybackEntitlementBoundary() {
     ({ url }) => {
       const parsed = new URL(url);
       membershipPaths.push(parsed.pathname);
+      if (isKugouWebRoleInfoEndpoint(parsed.pathname))
+        return unknownKugouWebRoleInfo();
       if (parsed.pathname === "/v1/get_union_vip") {
         return { body: { status: 1, data: {} } };
       }
@@ -551,6 +860,16 @@ async function testKugouPlaybackEntitlementBoundary() {
       );
     },
   );
+  const membershipProbePaths = membershipPaths.filter(
+    (pathname) =>
+      isKugouWebRoleInfoEndpoint(pathname) ||
+      isKugouMembershipEndpoint(pathname),
+  );
+  assert.strictEqual(
+    membershipProbePaths[0],
+    "/recharge/roleinfo",
+    "Kugou must probe the official web roleinfo endpoint before gateway fallbacks",
+  );
   assert(
     membershipPaths.includes("/v1/get_union_vip"),
     "Kugou must try the primary VIP endpoint",
@@ -558,6 +877,62 @@ async function testKugouPlaybackEntitlementBoundary() {
   assert(
     membershipPaths.includes("/v1/vipuser_sub"),
     "Kugou must continue after an unknown primary response",
+  );
+
+  const primaryNegativeCookie =
+    "userid=71005; token=primary-negative-vip-token; kg_mid=primary-negative-vip-mid; KuGoo=KugooID%3D71005%26NickName%3DVIP";
+  const primaryNegativePaths = [];
+  await withHttpsMock(
+    ({ url }) => {
+      const parsed = new URL(url);
+      primaryNegativePaths.push(parsed.pathname);
+      if (isKugouWebRoleInfoEndpoint(parsed.pathname))
+        return unknownKugouWebRoleInfo();
+      if (parsed.pathname === "/v1/get_union_vip") {
+        return {
+          body: {
+            status: 1,
+            data: { userid: "71005", is_vip: false, vip_type: 0 },
+          },
+        };
+      }
+      if (parsed.pathname === "/kugouvip/v2/batch_union_vipinfo") {
+        return {
+          body: {
+            status: 1,
+            data: {
+              userid: "71005",
+              is_vip: true,
+              vip_type: 1,
+              vip_end_time: 4102444800,
+            },
+          },
+        };
+      }
+      return { body: { status: 1, data: {} } };
+    },
+    async () => {
+      const status = await kugou.getKugouLoginInfo(primaryNegativeCookie);
+      assert.strictEqual(
+        status.isVip,
+        true,
+        "one stale ordinary endpoint must not hide a later verified Kugou VIP result",
+      );
+      assert.strictEqual(
+        status.membershipVerified,
+        true,
+        "later official VIP evidence must remain verified",
+      );
+      assert.strictEqual(
+        status.membershipRights.maxQuality,
+        "lossless",
+        "Kugou VIP and SVIP quality rights must remain distinct",
+      );
+    },
+  );
+  assert(
+    primaryNegativePaths.includes("/kugouvip/v2/batch_union_vipinfo"),
+    "Kugou must continue after a primary ordinary response",
   );
 }
 
@@ -768,6 +1143,8 @@ async function testQishuiPlaybackEntitlementBoundary() {
 async function main() {
   testKugouMembershipNormalization();
   testKugouPlaybackBoundaries();
+  await testKugouWebRoleInfoFlow();
+  await testKugouSessionCacheInvalidation();
   await testKugouPlaybackEntitlementBoundary();
   testQishuiMembershipNormalization();
   await testQishuiPlaybackEntitlementBoundary();

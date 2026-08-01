@@ -250,6 +250,11 @@ function openHomeLocalImport() {
   homeSuppressed = false;
   setHomeControlsLocked(false);
   updateEmptyHomeVisibility();
+  if (
+    typeof loadPersistedLocalLibraryIntoQueue === "function" &&
+    loadPersistedLocalLibraryIntoQueue()
+  )
+    return;
   openUploadPanel();
 }
 function openHomeProductGuide() {
