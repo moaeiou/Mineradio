@@ -140,7 +140,7 @@ const {
 } = require("./cuefield/mineradio-bridge");
 
 const PORT = process.env.PORT || 3000;
-const HOST = process.env.HOST || "0.0.0.0";
+const HOST = process.env.MINERADIO_LISTEN_HOST || process.env.HOST || "127.0.0.1";
 const LOGIN_EASTER_EGG_GATE_FILE = String(
   process.env.MINERADIO_LOGIN_EASTER_EGG_GATE_FILE || "",
 );
@@ -165,7 +165,8 @@ const DEFAULT_QQ_COOKIE_FILE = path.join(__dirname, ".qq-cookie");
 const DEFAULT_KUGOU_COOKIE_FILE = path.join(__dirname, ".kugou-cookie");
 const DEFAULT_QISHUI_COOKIE_FILE = path.join(__dirname, ".qishui-cookie");
 const BEATMAP_CACHE_DIR =
-  process.env.MINERADIO_BEAT_CACHE_DIR || "D:\\MineradioCache\\beatmaps";
+  process.env.MINERADIO_BEAT_CACHE_DIR ||
+  path.join(__dirname, "data", "beatmaps");
 const CUEFIELD_FEEDBACK_FILE =
   process.env.CUEFIELD_FEEDBACK_FILE ||
   path.join(__dirname, "data", "cuefield-feedback.jsonl");
@@ -187,7 +188,68 @@ const UPDATE_FALLBACK_NOTES = [
 ];
 const OPEN_METEO_FORECAST_URL = "https://api.open-meteo.com/v1/forecast";
 const OPEN_METEO_GEOCODE_URL = "https://geocoding-api.open-meteo.com/v1/search";
-const WEATHER_IP_LOCATION_URL = "http://ip-api.com/json/";
+const WEATHER_IP_LOCATION_URL = "https://ipinfo.io/json";
+const WEATHER_COUNTRY_NAMES = new Map([
+  ["CN", "中国"],
+  ["HK", "中国香港"],
+  ["MO", "中国澳门"],
+  ["TW", "中国台湾"],
+  ["JP", "日本"],
+  ["KR", "韩国"],
+  ["KP", "朝鲜"],
+  ["US", "美国"],
+  ["GB", "英国"],
+  ["DE", "德国"],
+  ["FR", "法国"],
+  ["CA", "加拿大"],
+  ["AU", "澳大利亚"],
+  ["NZ", "新西兰"],
+  ["SG", "新加坡"],
+  ["MY", "马来西亚"],
+  ["TH", "泰国"],
+  ["VN", "越南"],
+  ["MM", "缅甸"],
+  ["KH", "柬埔寨"],
+  ["LA", "老挝"],
+  ["PH", "菲律宾"],
+  ["ID", "印度尼西亚"],
+  ["IN", "印度"],
+  ["PK", "巴基斯坦"],
+  ["BD", "孟加拉国"],
+  ["LK", "斯里兰卡"],
+  ["NP", "尼泊尔"],
+  ["RU", "俄罗斯"],
+  ["KZ", "哈萨克斯坦"],
+  ["UZ", "乌兹别克斯坦"],
+  ["AE", "阿联酋"],
+  ["SA", "沙特阿拉伯"],
+  ["TR", "土耳其"],
+  ["IL", "以色列"],
+  ["IT", "意大利"],
+  ["ES", "西班牙"],
+  ["PT", "葡萄牙"],
+  ["NL", "荷兰"],
+  ["BE", "比利时"],
+  ["CH", "瑞士"],
+  ["AT", "奥地利"],
+  ["SE", "瑞典"],
+  ["NO", "挪威"],
+  ["FI", "芬兰"],
+  ["DK", "丹麦"],
+  ["IE", "爱尔兰"],
+  ["PL", "波兰"],
+  ["CZ", "捷克"],
+  ["GR", "希腊"],
+  ["UA", "乌克兰"],
+  ["BR", "巴西"],
+  ["MX", "墨西哥"],
+  ["AR", "阿根廷"],
+  ["CL", "智利"],
+  ["CO", "哥伦比亚"],
+  ["PE", "秘鲁"],
+  ["EG", "埃及"],
+  ["ZA", "南非"],
+]);
 const WEATHER_DEFAULT_LOCATION = {
   name: "上海",
   country: "China",
@@ -2838,33 +2900,43 @@ async function fetchOpenMeteoWeather(params) {
 
 async function fetchIpWeatherLocation() {
   const u = new URL(WEATHER_IP_LOCATION_URL);
-  u.searchParams.set(
-    "fields",
-    "status,message,country,regionName,city,lat,lon,timezone,query",
-  );
-  u.searchParams.set("lang", "zh-CN");
-  const body = await requestJson(u.toString(), {
-    headers: { "User-Agent": UA },
-  });
-  if (
-    !body ||
-    body.status !== "success" ||
-    !Number.isFinite(Number(body.lat)) ||
-    !Number.isFinite(Number(body.lon))
-  ) {
-    const err = new Error((body && body.message) || "IP_LOCATION_FAILED");
+  let body;
+  try {
+    body = await requestJson(u.toString(), {
+      headers: { "User-Agent": UA, Accept: "application/json" },
+    });
+  } catch (err) {
+    let detail = (err && err.message) || "IP_LOCATION_FAILED";
+    try {
+      const parsed = JSON.parse((err && err.body) || "");
+      detail =
+        (parsed &&
+          parsed.error &&
+          (parsed.error.message || parsed.error.title)) ||
+        detail;
+    } catch (_) {}
+    const wrapped = new Error("IP_LOCATION_FAILED: " + detail);
+    wrapped.cause = err;
+    throw wrapped;
+  }
+  const loc = String((body && body.loc) || "").split(",");
+  const latitude = Number(loc[0]);
+  const longitude = Number(loc[1]);
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+    const err = new Error("IP_LOCATION_FAILED");
     err.body = body;
     throw err;
   }
+  const countryCode = String((body && body.country) || "").toUpperCase();
   return {
-    provider: "ip-api",
-    city: body.city || WEATHER_DEFAULT_LOCATION.name,
-    region: body.regionName || "",
-    country: body.country || "",
-    latitude: Number(body.lat),
-    longitude: Number(body.lon),
-    timezone: body.timezone || "auto",
-    ip: body.query || "",
+    provider: "ipinfo",
+    city: (body && body.city) || WEATHER_DEFAULT_LOCATION.name,
+    region: (body && body.region) || "",
+    country: WEATHER_COUNTRY_NAMES.get(countryCode) || countryCode,
+    latitude,
+    longitude,
+    timezone: (body && body.timezone) || "auto",
+    ip: (body && body.ip) || "",
   };
 }
 
@@ -9998,8 +10070,10 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, HOST, () => {
+  const displayHost =
+    HOST === "0.0.0.0" || HOST === "::" ? "localhost" : HOST;
   console.log("======================================================");
-  console.log(" 粒子音乐可视化 v2  →  http://localhost:" + PORT);
+  console.log(" 粒子音乐可视化 v2  →  http://" + displayHost + ":" + PORT);
   console.log(" 登录态: " + (userCookie ? "已登录(cookie已加载)" : "未登录"));
   console.log("======================================================");
 });

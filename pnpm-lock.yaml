@@ -20,6 +20,9 @@ importers:
       prettier:
         specifier: ^3.9.6
         version: 3.9.6
+      qrcode:
+        specifier: ^1.5.4
+        version: 1.5.4
     devDependencies:
       dotenv:
         specifier: 17.4.2
@@ -1184,8 +1187,8 @@ packages:
     resolution: {integrity: sha512-eRWB5LBz7PpDu4PUlwT0PhnQfTQJlDDdPa35urV4Osrm0t0AqQFGn+UIkU3klZvwJ8KPO3VbBFsXquA6p6kqZw==}
     engines: {node: '>=12', npm: '>=6'}
 
-  peek-readable@4.1.0:
-    resolution: {integrity: sha512-ZI3LnwUv5nOGbQzD9c2iDG6toheuXSZP5esSHBjopsXH4dg19soufvpUGA3uohi5anFtGb2lhAVdHzH6R/Evvg==}
+  peek-readable@3.1.0:
+    resolution: {integrity: sha512-KGuODSTV6hcgdZvDrIDBUkN0utcAVj1LL7FfGbM0viKTtCHmtZcuEJ+lGqsp0fTFkGqesdtemV2yUSMeyy3ddA==}
     engines: {node: '>=8'}
 
   picocolors@1.1.1:
@@ -1500,9 +1503,9 @@ packages:
     resolution: {integrity: sha512-ki4hZQfh5rX0QDLLkOCj+h+CVNkqmp/CMf8v8kZpkNVK6jGQooMytqzLZYUVYIZcFZ6yDB70EfD8POcFXiF5oA==}
     engines: {node: '>=18'}
 
-  strtok3@6.3.0:
-    resolution: {integrity: sha512-fZtbhtvI9I48xDSywd/somNqgUHl2L2cstmXCCif0itOf96jeW18MBSyrLuNicYQVkvpOxkZtkzujiTJ9LW5Jw==}
-    engines: {node: '>=10'}
+  strtok3@6.0.4:
+    resolution: {integrity: sha512-rqWMKwsbN9APU47bQTMEYTPcwdpKDtmf1jVhHzNW2cL1WqAxaM9iBb9t5P2fj+RV2YsErUWgQzHD5JwV0uCTEQ==}
+    engines: {node: '>=8'}
 
   sumchecker@3.0.1:
     resolution: {integrity: sha512-MvjXzkz/BOfyVDkG0oFOtBxHX2u3gKbMHIF/dXblZsgD3BWOFLmHovIpZY7BykJdAjcqRCBi1WYBNdEC9yI7vg==}
@@ -1545,8 +1548,8 @@ packages:
     resolution: {integrity: sha512-o5sSPKEkg/DIQNmH43V0/uerLrpzVedkUh8tGNvaeXpfpuwjKenlSox/2O/BTlZUtEe+JG7s5YhEz608PlAHRA==}
     engines: {node: '>=0.6'}
 
-  token-types@2.1.1:
-    resolution: {integrity: sha512-wnQcqlreS6VjthyHO3Y/kpK/emflxDBNhlNUPfh7wE39KnuDdOituXomIbyI79vBtF0Ninpkh72mcuRHo+RG3Q==}
+  token-types@2.0.0:
+    resolution: {integrity: sha512-WWvu8sGK8/ZmGusekZJJ5NM6rRVTTDO7/bahz4NGiSDb/XsmdYBn6a1N/bymUHuWYTWeuLUg98wUzvE4jPdCZw==}
     engines: {node: '>=0.1.98'}
 
   token-types@6.1.2:
@@ -2520,8 +2523,8 @@ snapshots:
   file-type@16.1.0:
     dependencies:
       readable-web-to-node-stream: 3.0.4
-      strtok3: 6.3.0
-      token-types: 2.1.1
+      strtok3: 6.0.4
+      token-types: 2.0.0
       typedarray-to-buffer: 3.1.5
 
   filelist@1.0.6:
@@ -2923,8 +2926,8 @@ snapshots:
       debug: 4.4.3(supports-color@7.2.0)
       file-type: 16.1.0
       media-typer: 1.1.1
-      strtok3: 6.3.0
-      token-types: 2.1.1
+      strtok3: 6.0.4
+      token-types: 2.0.0
     transitivePeerDependencies:
       - supports-color
 
@@ -3032,7 +3035,7 @@ snapshots:
 
   pe-library@0.4.1: {}
 
-  peek-readable@4.1.0: {}
+  peek-readable@3.1.0: {}
 
   picocolors@1.1.1: {}
 
@@ -3369,10 +3372,11 @@ snapshots:
     dependencies:
       '@tokenizer/token': 0.3.0
 
-  strtok3@6.3.0:
+  strtok3@6.0.4:
     dependencies:
-      '@tokenizer/token': 0.3.0
-      peek-readable: 4.1.0
+      '@tokenizer/token': 0.1.1
+      '@types/debug': 4.1.13
+      peek-readable: 3.1.0
 
   sumchecker@3.0.1(supports-color@7.2.0):
     dependencies:
@@ -3424,7 +3428,7 @@ snapshots:
 
   toidentifier@1.0.1: {}
 
-  token-types@2.1.1:
+  token-types@2.0.0:
     dependencies:
       '@tokenizer/token': 0.1.1
       ieee754: 1.2.1

@@ -21,6 +21,19 @@ const crypto = require("crypto");
 const { execFile, spawn } = require("child_process");
 const systemMemory = require("./system-memory");
 const {
+  gpuBackendRuntimeKey,
+  readGpuBackendState,
+  writeGpuBackendState,
+  selectGpuBackend,
+  gpuBackendSwitches,
+  gpuInfoReportsVulkan,
+} = require("./gpu-backend");
+const {
+  resolveListenHost,
+  connectHostForListenHost,
+  formatListenHostForUrl,
+} = require("./listen-host");
+const {
   WallpaperEngineLibrary,
   registerWallpaperEngineScheme,
 } = require("./wallpaper-engine-library");
@@ -50,6 +63,8 @@ registerLocalMusicScheme(protocol);
 let mainWindow = null;
 let localServer = null;
 let mainServerPort = 0;
+let activeListenHost = "127.0.0.1";
+let activeConnectHost = "127.0.0.1";
 let desktopLyricsWindow = null;
 let desktopLyricsState = {};
 let desktopLyricsUserBounds = null;
@@ -106,6 +121,10 @@ let fullDesktopEscapeExitPending = false;
 let fullDesktopEscapeSuspendedBinding = null;
 let fullDesktopEnableOperation = 0;
 let fullDesktopEnablePending = false;
+let gpuBackendWatchdogTimer = null;
+let gpuBackendFallbackStarted = false;
+let gpuBackendRendererReady = false;
+let gpuBackendValidationInFlight = false;
 
 const WINDOWED_ASPECT = 16 / 9;
 const WINDOWED_SCALE = 3 / 4;
@@ -174,6 +193,21 @@ const STABLE_USER_DATA_PATH =
   STARTUP_QA_USER_DATA_PATH || path.join(app.getPath("appData"), APP_NAME);
 fs.mkdirSync(STABLE_USER_DATA_PATH, { recursive: true });
 app.setPath("userData", STABLE_USER_DATA_PATH);
+const GPU_BACKEND_STATE_FILE = path.join(
+  STABLE_USER_DATA_PATH,
+  "gpu-backend-state.json",
+);
+const GPU_BACKEND_RUNTIME_KEY = gpuBackendRuntimeKey({
+  appVersion: APP_PACKAGE_INFO.version,
+  electronVersion: process.versions.electron,
+  platform: process.platform,
+  arch: process.arch,
+});
+const ACTIVE_GPU_BACKEND = selectGpuBackend({
+  platform: process.platform,
+  runtimeKey: GPU_BACKEND_RUNTIME_KEY,
+  state: readGpuBackendState(GPU_BACKEND_STATE_FILE),
+});
 const INITIAL_CACHE_SETTINGS = ensureCacheDirectories(readCacheSettings());
 const loginEasterEggGate = new LoginEasterEggGate({
   userDataPath: STABLE_USER_DATA_PATH,
@@ -363,10 +397,7 @@ function cacheSettingsConfigPath() {
 }
 
 function defaultCacheRootPath() {
-  const dDrive = "D:\\";
-  return fs.existsSync(dDrive)
-    ? path.join(dDrive, "MineradioCache")
-    : path.join(app.getPath("userData"), "cache");
+  return path.join(app.getPath("userData"), "cache");
 }
 
 function normalizeCacheRootPath(value) {
@@ -601,8 +632,17 @@ const CHROMIUM_SAFE_PERFORMANCE_SWITCHES = [
   ["enable-oop-rasterization"],
   ["enable-zero-copy"],
   ["enable-accelerated-2d-canvas"],
-  ["use-angle", "d3d11"],
+  ...gpuBackendSwitches(ACTIVE_GPU_BACKEND.backend),
 ];
+if (
+  process.platform === "linux" &&
+  (process.env.XDG_SESSION_TYPE === "wayland" || process.env.WAYLAND_DISPLAY)
+) {
+  CHROMIUM_SAFE_PERFORMANCE_SWITCHES.push([
+    "disable-features",
+    "WaylandWpColorManagerV1",
+  ]);
+}
 const CHROMIUM_OPT_IN_PERFORMANCE_SWITCHES = [
   ["ignore-gpu-blocklist", null, "MINERADIO_IGNORE_GPU_BLOCKLIST"],
   ["force_high_performance_gpu", null, "MINERADIO_FORCE_HIGH_PERFORMANCE_GPU"],
@@ -775,9 +815,14 @@ function waitForServer(server, timeoutMs = STARTUP_SERVER_TIMEOUT_MS) {
   });
 }
 
-function waitForLocalHttpReady(port, timeoutMs = STARTUP_HTTP_TIMEOUT_MS) {
+function waitForLocalHttpReady(
+  port,
+  timeoutMs = STARTUP_HTTP_TIMEOUT_MS,
+  listenHost = "127.0.0.1",
+) {
   const deadline =
     Date.now() + Math.max(1500, Number(timeoutMs) || STARTUP_HTTP_TIMEOUT_MS);
+  const probeHost = connectHostForListenHost(listenHost);
   return new Promise((resolve, reject) => {
     let settled = false;
     let activeRequest = null;
@@ -804,7 +849,7 @@ function waitForLocalHttpReady(port, timeoutMs = STARTUP_HTTP_TIMEOUT_MS) {
         return;
       }
       activeRequest = http.get(
-        { host: "127.0.0.1", port, path: "/", timeout: 1200 },
+        { host: probeHost, port, path: "/", timeout: 1200 },
         (response) => {
           response.resume();
           activeRequest = null;
@@ -916,12 +961,20 @@ const LOCAL_APP_PERMISSION_ALLOWLIST = new Set([
 function isLocalAppUrl(value) {
   try {
     const u = new URL(String(value || ""));
-    return (
-      u.protocol === "http:" &&
-      u.hostname === "127.0.0.1" &&
-      Number(u.port || 0) === Number(mainServerPort || 0)
-    );
-  } catch (e) {
+    if (
+      u.protocol !== "http:" ||
+      Number(u.port || 0) !== Number(mainServerPort || 0)
+    )
+      return false;
+    const hostname = u.hostname.toLowerCase();
+    if (
+      hostname === "127.0.0.1" ||
+      hostname === "::1" ||
+      hostname === "localhost"
+    )
+      return true;
+    return hostname === String(activeConnectHost || "").toLowerCase();
+  } catch (_) {
     return false;
   }
 }
@@ -947,6 +1000,20 @@ function isTrustedMainWindowIpc(event) {
     const sourceUrl =
       (event.senderFrame && event.senderFrame.url) || event.sender.getURL();
     return isTrustedMainDocumentUrl(sourceUrl);
+  } catch (_) {
+    return false;
+  }
+}
+
+function mainWindowDocumentIsTrusted(win) {
+  try {
+    return (
+      !!win &&
+      !win.isDestroyed() &&
+      !!win.webContents &&
+      !win.webContents.isDestroyed() &&
+      isTrustedMainDocumentUrl(win.webContents.getURL())
+    );
   } catch (_) {
     return false;
   }
@@ -2493,6 +2560,10 @@ function getWindowState(win) {
 
 function setMainWindowFullscreenResizeGuard(win, fullscreen) {
   if (!win || win.isDestroyed()) return;
+  // This lock works around resize-cursor interference on Windows. On macOS,
+  // making a window non-resizable can also make it ineligible for native
+  // fullscreen, so never apply the workaround on other platforms.
+  if (process.platform !== "win32") return;
   const shouldResize = !fullscreen;
   try {
     if (
@@ -2538,9 +2609,127 @@ async function getGpuDiagnostics() {
         process.env.MINERADIO_FORCE_HIGH_PERFORMANCE_GPU === "1",
       keepBackgroundRendering:
         process.env.MINERADIO_KEEP_BACKGROUND_RENDERING === "1",
-      angle: "d3d11",
+      angle: ACTIVE_GPU_BACKEND.backend,
+      preferred: ACTIVE_GPU_BACKEND.preferred,
+      fallback: ACTIVE_GPU_BACKEND.fallback,
+      selectionSource: ACTIVE_GPU_BACKEND.source,
     },
   };
+}
+
+function clearGpuBackendWatchdog() {
+  if (!gpuBackendWatchdogTimer) return;
+  clearTimeout(gpuBackendWatchdogTimer);
+  gpuBackendWatchdogTimer = null;
+}
+
+async function recordGpuBackendSuccess(detail = {}) {
+  if (gpuBackendRendererReady || gpuBackendValidationInFlight) return;
+  gpuBackendValidationInFlight = true;
+  let completeInfo = null;
+  try {
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      completeInfo = await app.getGPUInfo("complete");
+      if (
+        ACTIVE_GPU_BACKEND.backend !== "vulkan" ||
+        gpuInfoReportsVulkan(completeInfo)
+      )
+        break;
+      const aux = (completeInfo && completeInfo.auxAttributes) || {};
+      const implementation = String(aux.glImplementationParts || "");
+      if (
+        aux.hardwareSupportsVulkan === false ||
+        (/angle\s*=/i.test(implementation) &&
+          !/angle\s*=\s*none/i.test(implementation))
+      )
+        break;
+      await new Promise((resolve) => setTimeout(resolve, 350));
+    }
+  } catch (error) {
+    if (ACTIVE_GPU_BACKEND.backend === "vulkan") {
+      gpuBackendValidationInFlight = false;
+      requestGpuBackendFallback("gpu-info-unavailable", error.message || error);
+      return;
+    }
+  }
+  if (
+    ACTIVE_GPU_BACKEND.backend === "vulkan" &&
+    !gpuInfoReportsVulkan(completeInfo)
+  ) {
+    gpuBackendValidationInFlight = false;
+    const aux = (completeInfo && completeInfo.auxAttributes) || {};
+    requestGpuBackendFallback(
+      "vulkan-not-active",
+      `${aux.glImplementationParts || "unknown"}; hardwareSupportsVulkan=${
+        aux.hardwareSupportsVulkan
+      }`,
+    );
+    return;
+  }
+  gpuBackendRendererReady = true;
+  gpuBackendValidationInFlight = false;
+  clearGpuBackendWatchdog();
+  const previousState = readGpuBackendState(GPU_BACKEND_STATE_FILE);
+  writeGpuBackendState(GPU_BACKEND_STATE_FILE, {
+    ...previousState,
+    runtimeKey: GPU_BACKEND_RUNTIME_KEY,
+    lastBackend: ACTIVE_GPU_BACKEND.backend,
+    lastSuccessAt: Date.now(),
+    renderer: String(detail.renderer || detail.message || "").slice(0, 300),
+    ...(ACTIVE_GPU_BACKEND.backend === "vulkan"
+      ? {
+          vulkanFailedAt: 0,
+          vulkanFailureReason: "",
+          vulkanFailureDetail: "",
+        }
+      : {}),
+  });
+  console.log(`[GPUBackend] ${ACTIVE_GPU_BACKEND.backend} renderer ready`);
+}
+
+function requestGpuBackendFallback(reason, detail = "") {
+  if (
+    gpuBackendFallbackStarted ||
+    appQuitting ||
+    ACTIVE_GPU_BACKEND.backend !== "vulkan" ||
+    ACTIVE_GPU_BACKEND.canFallback !== true
+  )
+    return false;
+  gpuBackendFallbackStarted = true;
+  clearGpuBackendWatchdog();
+  const safeReason = String(reason || "vulkan-failed").slice(0, 160);
+  writeGpuBackendState(GPU_BACKEND_STATE_FILE, {
+    ...readGpuBackendState(GPU_BACKEND_STATE_FILE),
+    runtimeKey: GPU_BACKEND_RUNTIME_KEY,
+    lastBackend: "vulkan",
+    vulkanFailedAt: Date.now(),
+    vulkanFailureReason: safeReason,
+    vulkanFailureDetail: String(detail || "").slice(0, 500),
+  });
+  console.warn(
+    `[GPUBackend] Vulkan failed (${safeReason}); restarting with ${ACTIVE_GPU_BACKEND.fallback}.`,
+  );
+  process.env.MINERADIO_GPU_BACKEND_RELAUNCH = ACTIVE_GPU_BACKEND.fallback;
+  appQuitting = true;
+  app.relaunch({ args: process.argv.slice(1) });
+  app.exit(0);
+  return true;
+}
+
+function armGpuBackendWatchdog(win) {
+  if (
+    gpuBackendRendererReady ||
+    gpuBackendFallbackStarted ||
+    ACTIVE_GPU_BACKEND.backend !== "vulkan" ||
+    ACTIVE_GPU_BACKEND.canFallback !== true ||
+    !mainWindowDocumentIsTrusted(win)
+  )
+    return;
+  clearGpuBackendWatchdog();
+  gpuBackendWatchdogTimer = setTimeout(() => {
+    gpuBackendWatchdogTimer = null;
+    requestGpuBackendFallback("renderer-first-frame-timeout");
+  }, 12000);
 }
 
 function collectAppTrimPids() {
@@ -4498,6 +4687,8 @@ function applyWindowedBounds(win) {
 
 function exitFullscreenToWindow(win) {
   if (!win || win.isDestroyed()) return;
+  clearTimeout(fullscreenTransitionTimer);
+  fullscreenTransitionTimer = null;
   windowFullscreenActive = false;
 
   if (!win.isFullScreen()) {
@@ -4521,13 +4712,54 @@ function toggleFullscreen(win) {
   windowFullscreenActive = true;
   ensureMainWindowInsideDisplay(win);
   setMainWindowFullscreenResizeGuard(win, true);
-  win.setFullScreen(true);
+  try {
+    if (
+      typeof win.isFullScreenable === "function" &&
+      typeof win.setFullScreenable === "function" &&
+      !win.isFullScreenable()
+    ) {
+      win.setFullScreenable(true);
+    }
+    win.setFullScreen(true);
+  } catch (error) {
+    windowFullscreenActive = false;
+    setMainWindowFullscreenResizeGuard(win, false);
+    sendWindowState(win);
+    console.warn(
+      "[WindowFullscreen] enter failed:",
+      (error && error.message) || error,
+    );
+    return;
+  }
   sendWindowState(win);
+  clearTimeout(fullscreenTransitionTimer);
+  // Native fullscreen is asynchronous on macOS. Events remain authoritative;
+  // this watchdog only rolls back a request whose event never arrives.
+  fullscreenTransitionTimer = setTimeout(
+    () => {
+      fullscreenTransitionTimer = null;
+      if (!win.isDestroyed() && !win.isFullScreen()) {
+        windowFullscreenActive = false;
+        setMainWindowFullscreenResizeGuard(win, false);
+        sendWindowState(win);
+      }
+    },
+    process.platform === "darwin" ? 10000 : 3000,
+  );
+}
+
+function toggleMaximize(win) {
+  if (!win || win.isDestroyed()) return;
+  // Avoid conflicting native window operations during a fullscreen transition,
+  // particularly while macOS is animating between Spaces.
+  if (win.isFullScreen() || windowFullscreenActive) return;
+  if (win.isMaximized()) win.unmaximize();
+  else win.maximize();
 }
 
 function overlayUrl(page) {
   const port = mainServerPort || process.env.PORT || 3000;
-  return `http://127.0.0.1:${port}/${page}`;
+  return `http://${formatListenHostForUrl(activeConnectHost)}:${port}/${page}`;
 }
 
 function clampNumber(value, min, max, fallback) {
@@ -5008,7 +5240,7 @@ ipcMain.handle("desktop-window-toggle-maximize", (event) => {
   ) {
     return getWindowState(win);
   }
-  toggleFullscreen(win);
+  toggleMaximize(win);
   return getWindowState(win);
 });
 
@@ -5166,6 +5398,24 @@ ipcMain.on("mineradio-full-desktop-pointer-route", (event, payload = {}) => {
 
 ipcMain.handle("mineradio-get-gpu-diagnostics", () => {
   return getGpuDiagnostics();
+});
+
+ipcMain.on("mineradio-gpu-backend-status", (event, payload = {}) => {
+  if (!isTrustedMainWindowIpc(event)) return;
+  if (payload.ok === true) {
+    recordGpuBackendSuccess(payload).catch((error) => {
+      gpuBackendValidationInFlight = false;
+      requestGpuBackendFallback(
+        "gpu-validation-failed",
+        error.message || error,
+      );
+    });
+    return;
+  }
+  requestGpuBackendFallback(
+    payload.reason || "renderer-reported-failure",
+    payload.message,
+  );
 });
 
 ipcMain.handle("mineradio-memory-get-snapshot", async () => {
@@ -6624,8 +6874,9 @@ ipcMain.handle("mineradio-wallpaper-get-status", async (event) => {
   };
 });
 
-function configureLocalServerEnvironment(port) {
-  process.env.HOST = "127.0.0.1";
+function configureLocalServerEnvironment(port, listenHost = "127.0.0.1") {
+  process.env.MINERADIO_LISTEN_HOST = listenHost;
+  process.env.HOST = listenHost;
   process.env.PORT = String(port);
   process.env.MINERADIO_BEAT_CACHE_DIR = cacheSettings.beatmapsPath;
   process.env.CUEFIELD_FEEDBACK_FILE = path.join(
@@ -6931,6 +7182,13 @@ async function ensureLocalServerStarted() {
       ),
     );
     if (injectedDelay) await startupDelay(injectedDelay);
+    const listenHost = resolveListenHost({
+      argv: process.argv,
+      env: process.env,
+      defaultHost: "127.0.0.1",
+    }).host;
+    activeListenHost = listenHost;
+    activeConnectHost = connectHostForListenHost(listenHost);
     const port = await withStartupTimeout(
       findOpenPort(3000),
       5000,
@@ -6938,7 +7196,7 @@ async function ensureLocalServerStarted() {
     );
     mainServerPort = port;
     configureLocalAppPermissions();
-    configureLocalServerEnvironment(port);
+    configureLocalServerEnvironment(port, listenHost);
     migrateLegacyAuthStorage();
     await initializeLoginEasterEggGate();
 
@@ -6948,8 +7206,12 @@ async function ensureLocalServerStarted() {
     } catch (_) {}
     localServer = require(serverModulePath);
     await waitForServer(localServer, STARTUP_SERVER_TIMEOUT_MS);
-    await waitForLocalHttpReady(port, STARTUP_HTTP_TIMEOUT_MS);
-    writeStartupState("server-ready", { serverReadyAt: Date.now(), port });
+    await waitForLocalHttpReady(port, STARTUP_HTTP_TIMEOUT_MS, listenHost);
+    writeStartupState("server-ready", {
+      serverReadyAt: Date.now(),
+      port,
+      listenHost,
+    });
     return localServer;
   })()
     .catch((error) => {
@@ -7213,7 +7475,7 @@ function recoverMainWindowAfterRendererGone(
 
 async function loadMainWindowWithRetry(win) {
   const port = mainServerPort || process.env.PORT || 3000;
-  const baseUrl = `http://127.0.0.1:${port}`;
+  const baseUrl = `http://${formatListenHostForUrl(activeConnectHost)}:${port}`;
   let lastError = null;
   for (let attempt = 1; attempt <= 2; attempt += 1) {
     if (!win || win.isDestroyed())
@@ -7326,6 +7588,7 @@ async function createWindowOnce() {
     show: false,
     frame: false,
     fullscreen: false,
+    fullscreenable: true,
     resizable: true,
     transparent: true,
     opacity: process.env.MINERADIO_STARTUP_QA_HIDDEN === "1" ? 0 : 1,
@@ -7375,10 +7638,13 @@ async function createWindowOnce() {
   });
 
   win.webContents.on("did-finish-load", () => {
-    showMainWindowSafely(win, "did-finish-load");
+    if (mainWindowDocumentIsTrusted(win))
+      showMainWindowSafely(win, "did-finish-load");
+    armGpuBackendWatchdog(win);
   });
   win.webContents.on("dom-ready", () => {
-    showMainWindowSafely(win, "dom-ready");
+    if (mainWindowDocumentIsTrusted(win))
+      showMainWindowSafely(win, "dom-ready");
   });
   win.webContents.on(
     "did-fail-load",
@@ -7453,7 +7719,10 @@ async function createWindowOnce() {
     }
   });
 
-  win.once("ready-to-show", () => showMainWindowSafely(win, "ready-to-show"));
+  win.once("ready-to-show", () => {
+    if (mainWindowDocumentIsTrusted(win))
+      showMainWindowSafely(win, "ready-to-show");
+  });
   win.on("maximize", () => sendWindowState(win));
   win.on("unmaximize", () => sendWindowState(win));
   win.on("minimize", () => {
@@ -7553,6 +7822,7 @@ async function createWindowOnce() {
   });
   win.on("closed", () => {
     mainWindowCloseFlushArmed = false;
+    clearGpuBackendWatchdog();
     clearMainWindowFullscreenVisibilityGuard();
     mainWindowRendererRecoveryPromise = null;
     mainWindowRendererRecoveryAttempts = [];
@@ -7641,7 +7911,6 @@ async function createWindowOnce() {
   if (win.isDestroyed())
     throw new Error("Main BrowserWindow was destroyed after navigation");
   startupCompleted = true;
-  showMainWindowSafely(win, "navigation-complete");
   writeStartupState("ready", {
     readyAt: Date.now(),
     port: mainServerPort || Number(process.env.PORT) || 3000,

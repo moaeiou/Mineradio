@@ -1,7 +1,7 @@
 {
   "name": "Mineradio",
   "productName": "Mineradio",
-  "version": "2026.2.9",
+  "version": "2026.2.10",
   "description": "一款以电影镜头、粒子视觉和歌词舞台为核心的沉浸式音乐播放器。",
   "author": "Mineradio",
   "license": "GPL-3.0-only",
@@ -39,6 +39,9 @@
       "server.js",
       "runtime-platform.js",
       "*-api.js",
+      "qishui-auth-v6.js",
+      "qishui-auth-v6/**",
+      "qishui-qr-login.js",
       "qishui-audio-decryptor/**/*",
       "dj-analyzer.js",
       "LICENSE",
@@ -128,7 +131,8 @@
     "NeteaseCloudMusicApi": "^4.32.0",
     "gsap": "^3.15.0",
     "mpg123-decoder": "^1.0.3",
-    "prettier": "^3.9.6"
+    "prettier": "^3.9.6",
+    "qrcode": "^1.5.4"
   },
   "overrides": {
     "axios": "1.18.1",
