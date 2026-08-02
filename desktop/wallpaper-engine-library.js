@@ -462,8 +462,6 @@ async function discoverSteamLibraries() {
       process.env.ProgramW6432 && path.join(process.env.ProgramW6432, "Steam"),
       "C:\\Program Files (x86)\\Steam",
       "C:\\Program Files\\Steam",
-      "D:\\Steam",
-      "D:\\SteamLibrary",
       "E:\\Steam",
       "E:\\SteamLibrary",
       "F:\\Steam",

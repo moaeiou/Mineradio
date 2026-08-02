@@ -257,133 +257,7 @@ Function MineradioUsePreferredInstallDir
 FunctionEnd
 
 Function MineradioUseFirstAvailableInstallDir
-  IfFileExists "D:\*.*" driveD 0
-  IfFileExists "E:\*.*" driveE 0
-  IfFileExists "F:\*.*" driveF 0
-  IfFileExists "G:\*.*" driveG 0
-  IfFileExists "H:\*.*" driveH 0
-  IfFileExists "I:\*.*" driveI 0
-  IfFileExists "J:\*.*" driveJ 0
-  IfFileExists "K:\*.*" driveK 0
-  IfFileExists "L:\*.*" driveL 0
-  IfFileExists "M:\*.*" driveM 0
-  IfFileExists "N:\*.*" driveN 0
-  IfFileExists "O:\*.*" driveO 0
-  IfFileExists "P:\*.*" driveP 0
-  IfFileExists "Q:\*.*" driveQ 0
-  IfFileExists "R:\*.*" driveR 0
-  IfFileExists "S:\*.*" driveS 0
-  IfFileExists "T:\*.*" driveT 0
-  IfFileExists "U:\*.*" driveU 0
-  IfFileExists "V:\*.*" driveV 0
-  IfFileExists "W:\*.*" driveW 0
-  IfFileExists "X:\*.*" driveX 0
-  IfFileExists "Y:\*.*" driveY 0
-  IfFileExists "Z:\*.*" driveZ 0
   StrCpy $INSTDIR "C:\${MINERADIO_INSTALL_DIR_NAME}"
-  Return
-
-  driveD:
-    StrCpy $INSTDIR "D:\${MINERADIO_INSTALL_DIR_NAME}"
-    Return
-  driveE:
-    StrCpy $INSTDIR "E:\${MINERADIO_INSTALL_DIR_NAME}"
-    Return
-  driveF:
-    StrCpy $INSTDIR "F:\${MINERADIO_INSTALL_DIR_NAME}"
-    Return
-  driveG:
-    StrCpy $INSTDIR "G:\${MINERADIO_INSTALL_DIR_NAME}"
-    Return
-  driveH:
-    StrCpy $INSTDIR "H:\${MINERADIO_INSTALL_DIR_NAME}"
-    Return
-  driveI:
-    StrCpy $INSTDIR "I:\${MINERADIO_INSTALL_DIR_NAME}"
-    Return
-  driveJ:
-    StrCpy $INSTDIR "J:\${MINERADIO_INSTALL_DIR_NAME}"
-    Return
-  driveK:
-    StrCpy $INSTDIR "K:\${MINERADIO_INSTALL_DIR_NAME}"
-    Return
-  driveL:
-    StrCpy $INSTDIR "L:\${MINERADIO_INSTALL_DIR_NAME}"
-    Return
-  driveM:
-    StrCpy $INSTDIR "M:\${MINERADIO_INSTALL_DIR_NAME}"
-    Return
-  driveN:
-    StrCpy $INSTDIR "N:\${MINERADIO_INSTALL_DIR_NAME}"
-    Return
-  driveO:
-    StrCpy $INSTDIR "O:\${MINERADIO_INSTALL_DIR_NAME}"
-    Return
-  driveP:
-    StrCpy $INSTDIR "P:\${MINERADIO_INSTALL_DIR_NAME}"
-    Return
-  driveQ:
-    StrCpy $INSTDIR "Q:\${MINERADIO_INSTALL_DIR_NAME}"
-    Return
-  driveR:
-    StrCpy $INSTDIR "R:\${MINERADIO_INSTALL_DIR_NAME}"
-    Return
-  driveS:
-    StrCpy $INSTDIR "S:\${MINERADIO_INSTALL_DIR_NAME}"
-    Return
-  driveT:
-    StrCpy $INSTDIR "T:\${MINERADIO_INSTALL_DIR_NAME}"
-    Return
-  driveU:
-    StrCpy $INSTDIR "U:\${MINERADIO_INSTALL_DIR_NAME}"
-    Return
-  driveV:
-    StrCpy $INSTDIR "V:\${MINERADIO_INSTALL_DIR_NAME}"
-    Return
-  driveW:
-    StrCpy $INSTDIR "W:\${MINERADIO_INSTALL_DIR_NAME}"
-    Return
-  driveX:
-    StrCpy $INSTDIR "X:\${MINERADIO_INSTALL_DIR_NAME}"
-    Return
-  driveY:
-    StrCpy $INSTDIR "Y:\${MINERADIO_INSTALL_DIR_NAME}"
-    Return
-  driveZ:
-    StrCpy $INSTDIR "Z:\${MINERADIO_INSTALL_DIR_NAME}"
-    Return
-FunctionEnd
-
-Function MineradioHasPreferredInstallDrive
-  IfFileExists "D:\*.*" hasPreferred 0
-  IfFileExists "E:\*.*" hasPreferred 0
-  IfFileExists "F:\*.*" hasPreferred 0
-  IfFileExists "G:\*.*" hasPreferred 0
-  IfFileExists "H:\*.*" hasPreferred 0
-  IfFileExists "I:\*.*" hasPreferred 0
-  IfFileExists "J:\*.*" hasPreferred 0
-  IfFileExists "K:\*.*" hasPreferred 0
-  IfFileExists "L:\*.*" hasPreferred 0
-  IfFileExists "M:\*.*" hasPreferred 0
-  IfFileExists "N:\*.*" hasPreferred 0
-  IfFileExists "O:\*.*" hasPreferred 0
-  IfFileExists "P:\*.*" hasPreferred 0
-  IfFileExists "Q:\*.*" hasPreferred 0
-  IfFileExists "R:\*.*" hasPreferred 0
-  IfFileExists "S:\*.*" hasPreferred 0
-  IfFileExists "T:\*.*" hasPreferred 0
-  IfFileExists "U:\*.*" hasPreferred 0
-  IfFileExists "V:\*.*" hasPreferred 0
-  IfFileExists "W:\*.*" hasPreferred 0
-  IfFileExists "X:\*.*" hasPreferred 0
-  IfFileExists "Y:\*.*" hasPreferred 0
-  IfFileExists "Z:\*.*" hasPreferred 0
-  Push "0"
-  Return
-
-  hasPreferred:
-    Push "1"
-    Return
 FunctionEnd
 
 Function MineradioNormalizeInstallDir
@@ -754,22 +628,6 @@ Function MineradioValidateInstallDir
   Call MineradioExistingInstallPathCanBeAdopted
   Pop $4
 
-  StrCpy $0 "$INSTDIR" 1 0
-  StrCpy $1 "$INSTDIR" 1 1
-  ${If} $1 == ":"
-    ${If} $0 == "C"
-    ${OrIf} $0 == "c"
-      Call MineradioHasPreferredInstallDrive
-      Pop $2
-      ${If} $2 == "1"
-      ${AndIf} $3 != "1"
-      ${AndIf} $4 != "1"
-        MessageBox MB_ICONSTOP|MB_OK "检测到这台电脑还有 D-Z 盘，Mineradio 不安装到 C 盘。请改选 D 盘或其它非 C 盘的 Mineradio 文件夹。$\r$\n$\r$\n如果电脑只有 C 盘，安装器会自动放行 C:\Mineradio。"
-        Abort
-      ${EndIf}
-    ${EndIf}
-  ${EndIf}
-
   StrLen $0 "$INSTDIR"
   StrLen $2 "${MINERADIO_INSTALL_DIR_NAME}"
   IntOp $2 $2 + 1
@@ -839,7 +697,7 @@ Function MineradioWelcomeShow
   Pop $0
   SetCtlColors $0 "" "3257F7"
 
-  ${NSD_CreateLabel} 22u 96u 238u 24u "为这台电脑安装 ${PRODUCT_NAME}。默认安装到 D:\${MINERADIO_INSTALL_DIR_NAME}，下一步可以自由选择其它位置。"
+  ${NSD_CreateLabel} 22u 96u 238u 24u "为这台电脑安装 ${PRODUCT_NAME}。默认安装到系统盘，下一步可以自由选择其它位置。"
   Pop $0
   SendMessage $0 ${WM_SETFONT} $MineradioBodyFont 1
   SetCtlColors $0 "4B5263" "FFFFFF"
@@ -911,7 +769,7 @@ Function MineradioDirectoryShow
   SendMessage $0 ${WM_SETFONT} $MineradioSmallFont 1
   ${NSD_OnClick} $0 MineradioDirectoryBrowse
 
-  ${NSD_CreateLabel} 22u 122u 238u 12u "默认推荐：D:\${MINERADIO_INSTALL_DIR_NAME}；选盘符会自动建文件夹。"
+  ${NSD_CreateLabel} 22u 122u 238u 12u "默认安装到系统盘；你也可以改成其它磁盘或文件夹，安装器会自动创建缺失的目录。"
   Pop $0
   SendMessage $0 ${WM_SETFONT} $MineradioSmallFont 1
   SetCtlColors $0 "6B7280" "FFFFFF"

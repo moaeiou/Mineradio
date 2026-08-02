@@ -4,6 +4,8 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const { EventEmitter } = require("node:events");
 const { PassThrough } = require("node:stream");
+const os = require("node:os");
+const path = require("node:path");
 const {
   applyDesktopIconShape,
   clearDesktopIconShape,
@@ -209,8 +211,9 @@ test("probe parser normalizes physical icon rectangles", () => {
 
 test("exec wrapper invokes hidden PowerShell and parses the probe ack", async () => {
   let invocation = null;
+  const nativeTempPath = path.join(os.tmpdir(), "mineradio-test-native");
   const result = await probeDesktopIcons({
-    nativeTempPath: "D:\\MineradioCache\\native-helper-temp",
+    nativeTempPath,
     execFileImpl: (file, args, options, callback) => {
       invocation = { file, args, options };
       callback(
@@ -235,7 +238,7 @@ test("exec wrapper invokes hidden PowerShell and parses the probe ack", async ()
   assert.equal(invocation.options.windowsHide, true);
   assert.equal(
     invocation.options.env.TEMP,
-    "D:\\MineradioCache\\native-helper-temp",
+    nativeTempPath,
   );
   assert.match(invocation.args.at(-1), /LVM_GETITEMRECT/);
 });

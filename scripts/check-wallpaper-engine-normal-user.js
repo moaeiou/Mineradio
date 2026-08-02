@@ -3,6 +3,7 @@
 
 const assert = require("assert");
 const fs = require("fs");
+const os = require("os");
 const path = require("path");
 const { spawnSync } = require("child_process");
 
@@ -29,7 +30,11 @@ const runId = `${new Date()
   .toISOString()
   .replace(/[-:.TZ]/g, "")
   .slice(0, 14)}-${process.pid}-${Math.random().toString(16).slice(2, 10)}`;
-const outputRoot = path.join("D:\\MineradioCache\\we-normal-user-qa", runId);
+const outputRoot = path.join(
+  os.tmpdir(),
+  "mineradio-we-normal-user-qa",
+  runId,
+);
 const resultPath = path.join(outputRoot, "result.json");
 const windowListScript = path.join(
   __dirname,

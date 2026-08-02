@@ -29,6 +29,7 @@ var renderRefreshState = {
   hz: 60,
   stableHz: 60,
   samples: [],
+  lastMedianAt: 0,
 };
 var adaptiveFrameLoadState = {
   avgMs: 0,
@@ -52,6 +53,12 @@ function sampleDisplayRefreshHz(now) {
   renderRefreshState.samples.push(gap);
   if (renderRefreshState.samples.length > 36)
     renderRefreshState.samples.shift();
+  // The median only needs to be recomputed a few times per second. Sorting
+  // the whole sample window on every rAF allocates a copy and costs ~1-2us
+  // per frame for no user-visible benefit.
+  if (now - (renderRefreshState.lastMedianAt || 0) < 160)
+    return renderRefreshState.stableHz || renderRefreshState.hz || 60;
+  renderRefreshState.lastMedianAt = now;
   var sorted = renderRefreshState.samples.slice().sort(function (a, b) {
     return a - b;
   });

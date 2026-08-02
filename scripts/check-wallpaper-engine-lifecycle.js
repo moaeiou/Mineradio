@@ -4,11 +4,12 @@
 const assert = require("assert");
 const fs = require("fs");
 const net = require("net");
+const os = require("os");
 const path = require("path");
 const { spawn, spawnSync } = require("child_process");
 const { PNG } = require("pngjs");
 
-const QA_PARENT = "D:\\MineradioCache\\we-lifecycle-qa";
+const QA_PARENT = path.join(os.tmpdir(), "mineradio-we-lifecycle-qa");
 const DEFAULT_EXE = path.resolve(__dirname, "..", "..", "..", "Mineradio.exe");
 const workshopArgument = process.argv.find((value) =>
   /^--workshop=\d+$/.test(value),
@@ -1164,8 +1165,8 @@ async function main() {
     `Mineradio executable not found: ${executablePath}`,
   );
   assert(
-    path.parse(qaRoot).root.toUpperCase() === "D:\\",
-    "Lifecycle QA data must stay on D:",
+    path.resolve(qaRoot).startsWith(path.resolve(QA_PARENT) + path.sep),
+    "Lifecycle QA data must stay under the QA run root",
   );
   ensureQaDirectories();
 
@@ -1278,13 +1279,13 @@ async function main() {
     assert.strictEqual(
       path.resolve(fs.realpathSync(actualUserDataPath)),
       path.resolve(fs.realpathSync(linkedUserDataTarget)),
-      "QA userData is not physically redirected to D:",
+      "QA userData is not physically redirected to the QA run root",
     );
     assert(
       path
         .resolve(actualSessionDataPath)
         .startsWith(path.resolve(cacheRoot) + path.sep),
-      "QA Chromium session data is not isolated under the D-drive run root",
+      "QA Chromium session data is not isolated under the QA run root",
     );
     assert(
       path

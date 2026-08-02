@@ -4703,6 +4703,29 @@ function exitFullscreenToWindow(win) {
   // trigger two native WE rebuilds for one user action.
 }
 
+function applyMacFullscreenNativeOpaque(win, fullscreen) {
+  if (process.platform !== "darwin" || !win || win.isDestroyed()) return;
+  try {
+    if (fullscreen) {
+      // Transparent frameless NSWindows are a known macOS fullscreen problem
+      // class: the fullscreen Space can stop delivering clicks or stay
+      // click-through. Edge-to-edge fullscreen shows no transparency anyway,
+      // so make the surface opaque for the duration and re-arm input.
+      win.setBackgroundColor("#000000");
+      if (typeof win.setFocusable === "function") win.setFocusable(true);
+      if (typeof win.setIgnoreMouseEvents === "function")
+        win.setIgnoreMouseEvents(false);
+    } else {
+      win.setBackgroundColor("#00000000");
+    }
+  } catch (e) {
+    console.warn(
+      "[WindowFullscreen] macOS transparency restore failed:",
+      (e && e.message) || e,
+    );
+  }
+}
+
 function toggleFullscreen(win) {
   if (!win || win.isDestroyed()) return;
   if (win.isFullScreen() || windowFullscreenActive) {
@@ -4720,10 +4743,12 @@ function toggleFullscreen(win) {
     ) {
       win.setFullScreenable(true);
     }
+    applyMacFullscreenNativeOpaque(win, true);
     win.setFullScreen(true);
   } catch (error) {
     windowFullscreenActive = false;
     setMainWindowFullscreenResizeGuard(win, false);
+    applyMacFullscreenNativeOpaque(win, false);
     sendWindowState(win);
     console.warn(
       "[WindowFullscreen] enter failed:",
@@ -7853,6 +7878,7 @@ async function createWindowOnce() {
   win.on("enter-full-screen", () => {
     windowFullscreenActive = true;
     setMainWindowFullscreenResizeGuard(win, true);
+    applyMacFullscreenNativeOpaque(win, true);
     sendWindowState(win);
     startMainWindowFullscreenVisibilityGuard(win);
     // Some Windows builds coalesce the final resize event during native
@@ -7865,6 +7891,7 @@ async function createWindowOnce() {
   win.on("leave-full-screen", () => {
     windowFullscreenActive = false;
     setMainWindowFullscreenResizeGuard(win, false);
+    applyMacFullscreenNativeOpaque(win, false);
     clearMainWindowFullscreenVisibilityGuard();
     setTimeout(() => {
       applyWindowedBounds(win);

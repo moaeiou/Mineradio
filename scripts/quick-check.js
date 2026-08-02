@@ -9526,7 +9526,7 @@ function checkSonicTopographyPresetGuard() {
     );
   }
   if (
-    /getUserMedia|getDisplayMedia|desktopCapturer|MediaStream|D:\\\\Steam|workshop\\content/.test(
+    /getUserMedia|getDisplayMedia|desktopCapturer|MediaStream|workshop\\content/.test(
       sonicWorkshopText + sonicWorkshopBridgeText,
     )
   ) {
@@ -11920,7 +11920,11 @@ function runMainStartupRecoveryCheck() {
   fs.mkdirSync(qaUserDataParent, { recursive: true });
   const qaUserData = path.join(qaUserDataParent, runtimeName);
   const stateFile = path.join(qaUserData, "startup-state.json");
-  const qaSessionData = path.join("D:\\MineradioCache\\chromium", runtimeName);
+  const qaSessionData = path.join(
+    process.env.TEMP || appData,
+    "mineradio-startup-qa-chromium",
+    runtimeName,
+  );
   try {
     const result = spawnSync(electron, [appRoot], {
       cwd: appRoot,

@@ -2,9 +2,15 @@
 
 const assert = require("assert");
 const { spawnSync } = require("child_process");
+const os = require("os");
+const path = require("path");
 
 const port = Number(process.argv[2] || 9231);
 const hostPid = Number(process.argv[3] || 0);
+const nativeTempRoot = path.join(
+  os.tmpdir(),
+  "mineradio-we-native-helper-temp",
+);
 
 function sleep(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
@@ -104,7 +110,7 @@ async function main() {
 
   const script = `
 $ErrorActionPreference='Stop'
-$env:TEMP='D:\\MineradioCache\\native-helper-temp'
+$env:TEMP='${nativeTempRoot.replace(/\\/g, "\\\\")}'
 $env:TMP=$env:TEMP
 Add-Type -TypeDefinition @'
 using System;
@@ -130,8 +136,8 @@ if (-not [MineradioQaHostMove]::SetWindowPos($app.MainWindowHandle,[IntPtr]::Zer
       timeout: 15000,
       env: {
         ...process.env,
-        TEMP: "D:\\MineradioCache\\native-helper-temp",
-        TMP: "D:\\MineradioCache\\native-helper-temp",
+        TEMP: nativeTempRoot,
+        TMP: nativeTempRoot,
       },
     },
   );

@@ -3,6 +3,8 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { EventEmitter } = require("node:events");
+const os = require("node:os");
+const path = require("node:path");
 const {
   FullDesktopModeRuntime,
   desktopWindowCoexistAttachScript,
@@ -230,7 +232,7 @@ function makeRuntime(options = {}) {
   const runtime = new FullDesktopModeRuntime({
     screen,
     platform: "win32",
-    nativeTempPath: "D:\\MineradioCache\\native-helper-temp",
+    nativeTempPath: path.join(os.tmpdir(), "mineradio-test-native"),
     requestReconcile:
       typeof options.requestReconcile === "function"
         ? options.requestReconcile

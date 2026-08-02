@@ -3,16 +3,27 @@
 
 const childProcess = require("child_process");
 const fs = require("fs");
+const os = require("os");
 const path = require("path");
 
+const steamAppsRoot = path.join(
+  process.env["ProgramFiles(x86)"] ||
+    process.env.ProgramFiles ||
+    "C:\\Program Files (x86)",
+  "Steam",
+  "steamapps",
+);
 const executable =
-  "D:\\Steam\\steamapps\\common\\wallpaper_engine\\wallpaper64.exe";
+  process.env.MINERADIO_WE_EXE ||
+  path.join(steamAppsRoot, "common", "wallpaper_engine", "wallpaper64.exe");
 const sourceRoot =
-  "D:\\Steam\\steamapps\\workshop\\content\\431960\\3715870843";
+  process.env.MINERADIO_WE_WORKSHOP_SOURCE ||
+  path.join(steamAppsRoot, "workshop", "content", "431960", "3715870843");
 const sourceProjectFile = path.join(sourceRoot, "project.json");
 const sourcePackage = path.join(sourceRoot, "scene.pkg");
 const stageRoot = path.join(
-  "D:\\MineradioCache\\we-property-probe",
+  os.tmpdir(),
+  "mineradio-we-property-probe",
   String(process.pid),
 );
 const projectFile = path.join(stageRoot, "project.json");
