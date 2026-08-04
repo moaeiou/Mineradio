@@ -140,7 +140,8 @@ const {
 } = require("./cuefield/mineradio-bridge");
 
 const PORT = process.env.PORT || 3000;
-const HOST = process.env.MINERADIO_LISTEN_HOST || process.env.HOST || "127.0.0.1";
+const HOST =
+  process.env.MINERADIO_LISTEN_HOST || process.env.HOST || "127.0.0.1";
 const LOGIN_EASTER_EGG_GATE_FILE = String(
   process.env.MINERADIO_LOGIN_EASTER_EGG_GATE_FILE || "",
 );
@@ -10070,8 +10071,7 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, HOST, () => {
-  const displayHost =
-    HOST === "0.0.0.0" || HOST === "::" ? "localhost" : HOST;
+  const displayHost = HOST === "0.0.0.0" || HOST === "::" ? "localhost" : HOST;
   console.log("======================================================");
   console.log(" 粒子音乐可视化 v2  →  http://" + displayHost + ":" + PORT);
   console.log(" 登录态: " + (userCookie ? "已登录(cookie已加载)" : "未登录"));

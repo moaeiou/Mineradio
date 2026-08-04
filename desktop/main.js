@@ -4438,15 +4438,13 @@ async function openSpotifyMusicLoginWindow(owner) {
           message: "Spotify 授权窗口已关闭。",
         });
     });
-    loginWindow
-      .loadURL(authUrl)
-      .catch((e) =>
-        finish({
-          ok: false,
-          provider: "spotify",
-          error: e.message || "Spotify 授权页打开失败",
-        }),
-      );
+    loginWindow.loadURL(authUrl).catch((e) =>
+      finish({
+        ok: false,
+        provider: "spotify",
+        error: e.message || "Spotify 授权页打开失败",
+      }),
+    );
   });
 }
 

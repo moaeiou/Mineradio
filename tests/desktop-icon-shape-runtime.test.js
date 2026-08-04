@@ -236,10 +236,7 @@ test("exec wrapper invokes hidden PowerShell and parses the probe ack", async ()
   assert.equal(result.ok, true);
   assert.equal(invocation.file, "powershell.exe");
   assert.equal(invocation.options.windowsHide, true);
-  assert.equal(
-    invocation.options.env.TEMP,
-    nativeTempPath,
-  );
+  assert.equal(invocation.options.env.TEMP, nativeTempPath);
   assert.match(invocation.args.at(-1), /LVM_GETITEMRECT/);
 });
 
