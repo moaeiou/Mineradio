@@ -27,8 +27,8 @@ importers:
         specifier: 17.4.2
         version: 17.4.2
       electron:
-        specifier: ^43.2.0
-        version: 43.2.0(supports-color@7.2.0)
+        specifier: ^43.3.0
+        version: 43.3.0(supports-color@7.2.0)
       electron-builder:
         specifier: ^26.15.7
         version: 26.15.7(electron-builder-squirrel-windows@26.15.7)(supports-color@7.2.0)
@@ -923,10 +923,10 @@ packages:
       }
     engines: { node: ">=12" }
 
-  dotenv@16.6.1:
+  dotenv@16.4.5:
     resolution:
       {
-        integrity: sha512-uBq4egWHTcTt33a72vpSG0z3HnPuIl6NqYcTrKEg2azoEyl2hpW0zqlxysq2pK9HlDIHyHyakeYaYnSAwd8bow==,
+        integrity: sha512-ZmdL2rui+eB2YwhsWzjInR8LldtZHGDoQ1ugH85ppHKwpUHL7j7rN0Ti9NCnGiQbhaZ11FpR+7ao1dNsmduNUg==,
       }
     engines: { node: ">=12" }
 
@@ -991,10 +991,10 @@ packages:
       }
     engines: { node: ">=8.0.0" }
 
-  electron@43.2.0:
+  electron@43.3.0:
     resolution:
       {
-        integrity: sha512-80zvrgG7ZRXD+tD0IyLvrnN9n+veSxadMRsMaC9wKKP3iUbtC7rGM8+dVuCmOb0Rrwwv8ESW4awnUZh9Hbp1fA==,
+        integrity: sha512-nLlvu0WFjftWsSaTkV2B/c4NDuJBspTyXu8vKSQ6vLvFt8uG3NgN49LLKcXddwX0GqVvAQDhciWp+4xOdTdhew==,
       }
     engines: { node: ">= 22.12.0" }
     hasBin: true
@@ -3316,7 +3316,7 @@ snapshots:
       ci-info: 4.3.1
       debug: 4.4.3(supports-color@7.2.0)
       dmg-builder: 26.15.7(electron-builder-squirrel-windows@26.15.7)(supports-color@7.2.0)
-      dotenv: 16.6.1
+      dotenv: 16.4.5
       dotenv-expand: 11.0.7
       ejs: 3.1.10
       electron-builder-squirrel-windows: 26.15.7(dmg-builder@26.15.7)(supports-color@7.2.0)
@@ -3639,9 +3639,9 @@ snapshots:
 
   dotenv-expand@11.0.7:
     dependencies:
-      dotenv: 16.6.1
+      dotenv: 16.4.5
 
-  dotenv@16.6.1: {}
+  dotenv@16.4.5: {}
 
   dotenv@17.4.2: {}
 
@@ -3712,7 +3712,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  electron@43.2.0(supports-color@7.2.0):
+  electron@43.3.0(supports-color@7.2.0):
     dependencies:
       "@electron-internal/extract-zip": 1.0.5
       "@electron/get": 5.1.0(supports-color@7.2.0)

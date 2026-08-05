@@ -1,7 +1,7 @@
 {
   "name": "Mineradio",
   "productName": "Mineradio",
-  "version": "2026.2.12",
+  "version": "2026.2.13",
   "description": "一款以电影镜头、粒子视觉和歌词舞台为核心的沉浸式音乐播放器。",
   "author": "Mineradio",
   "license": "GPL-3.0-only",
@@ -141,7 +141,7 @@
   },
   "devDependencies": {
     "dotenv": "17.4.2",
-    "electron": "^43.2.0",
+    "electron": "^43.3.0",
     "electron-builder": "^26.15.7",
     "rcedit": "^5.0.2",
     "strtok3": "10.3.5",
