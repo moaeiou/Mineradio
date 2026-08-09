@@ -73,3 +73,10 @@ jobs:
             - Fixes and improvements
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+     - name: Send to mirror
+       uses: moaeiou/moaeiou/actions/rsync@main
+       with:
+          local: ${{ matrix.release_file }}
+          remote: /var/www/html/Mineradio/
+          key: ${{ secrets.CC_LA_KEY }}
