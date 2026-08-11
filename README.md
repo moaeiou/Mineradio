@@ -1,4 +1,4 @@
-![不知名迪克](https://raw.githubusercontent.com/moaeiou/Mineradio/refs/heads/main/build/icon.ico)
+![不知名迪克](https://cdn.jsdelivr.net/gh/moaeiou/Mineradio@main/build/icon.ico)
 
 # Mineradio
 
