@@ -13,22 +13,22 @@ jobs:
         include:
           - os: "ubuntu-latest"
             tag: "linux:pacman"
-            release_file: "dist/*.pacman"
+            dickname: "dist/*.pacman"
           - os: "ubuntu-latest"
             tag: "linux:rpm"
-            release_file: "dist/*.rpm"
+            dickname: "dist/*.rpm"
           - os: "ubuntu-latest"
             tag: "linux:AppImage"
-            release_file: "dist/*.AppImage"
+            dickname: "dist/*.AppImage"
           - os: "ubuntu-latest"
             tag: "linux:deb"
-            release_file: "dist/*.deb"
+            dickname: "dist/*.deb"
           - os: "macos-latest"
             tag: "macos"
-            release_file: "dist/*.dmg"
+            dickname: "dist/*.dmg"
           - os: "windows-latest"
             tag: "windows"
-            release_file: "dist/*.exe"
+            dickname: "dist/*.exe"
     runs-on: ${{ matrix.os }}
     name: Build for ${{ matrix.tag }}
 
@@ -66,7 +66,7 @@ jobs:
         uses: softprops/action-gh-release@master
         with:
           tag_name: V${{ steps.get_version.outputs.version }}
-          files: ${{ matrix.release_file }}
+          files: ${{ matrix.dickname }}
           fail_on_unmatched_files: true
           body: |
             # 📝 Release Note
@@ -74,9 +74,26 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Upload artifact
+        uses: actions/upload-artifact@main
+        with:
+          name: J'
+          path: ${{ matrix.dickname }}
+
+  sync:
+    needs: build
+    runs-os: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: ./jure
+          merge-multiple: true
+
       - name: Send to mirror
         uses: moaeiou/moaeiou/actions/rsync@main
         with:
-          local: ${{ matrix.release_file }}
+          local: ./jure/
           remote: /var/www/html/Mineradio/
           key: ${{ secrets.CC_LA_KEY }}
+          extra: --delete
