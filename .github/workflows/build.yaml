@@ -13,22 +13,22 @@ jobs:
         include:
           - os: "ubuntu-latest"
             tag: "linux:pacman"
-            dickname: "dist/*.pacman"
+            pas: "dist/*.pacman"
           - os: "ubuntu-latest"
             tag: "linux:rpm"
-            dickname: "dist/*.rpm"
+            pas: "dist/*.rpm"
           - os: "ubuntu-latest"
             tag: "linux:AppImage"
-            dickname: "dist/*.AppImage"
+            pas: "dist/*.AppImage"
           - os: "ubuntu-latest"
             tag: "linux:deb"
-            dickname: "dist/*.deb"
+            pas: "dist/*.deb"
           - os: "macos-latest"
             tag: "macos"
-            dickname: "dist/*.dmg"
+            pas: "dist/*.dmg"
           - os: "windows-latest"
             tag: "windows"
-            dickname: "dist/*.exe"
+            pas: "dist/*.exe"
     runs-on: ${{ matrix.os }}
     name: Build for ${{ matrix.tag }}
 
@@ -66,7 +66,7 @@ jobs:
         uses: softprops/action-gh-release@master
         with:
           tag_name: V${{ steps.get_version.outputs.version }}
-          files: ${{ matrix.dickname }}
+          files: ${{ matrix.pas }}
           fail_on_unmatched_files: true
           body: |
             # 📝 Release Note
@@ -77,8 +77,8 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@main
         with:
-          name: ${{ matrix.dickname }}
-          path: ${{ matrix.dickname }}
+          name: ${{ matrix.tag }}
+          path: ${{ matrix.pas }}
 
   sync:
     needs: build
