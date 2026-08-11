@@ -75,7 +75,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       
       - name: Sanitize artifact name
-        if: matrix.os == 'ubuntu-latest'
         id: fuckname
         shell: bash
         run: echo "name=$(echo '${{ matrix.tag }}' | tr ':' '-')" >> "$GITHUB_OUTPUT"
