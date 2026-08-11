@@ -59,6 +59,12 @@ pnpm install
 pnpm dev
 ```
 
+`pnpm dev` 和所有 `build:*` 命令都会先执行 `pnpm bundle`：把
+`public/js/modules/` 下散落的 100+ 个模块按加载顺序合并压缩成
+`public/js/index.bundle.js`（单个文件）。打包时散模块不再进安装包，只带
+bundle，因此安装包更小；开发时若 bundle 缺失，`index-loader.js` 会自动回退到
+逐模块加载，不会阻塞调试。
+
 ### 编译 对于Windows和macOS
 
 这里Windows只有`amd64` `macOS只有arm64` 以保证主流平台兼容

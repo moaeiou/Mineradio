@@ -8,7 +8,14 @@
     <link
       href="https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@700;900&family=Inter:wght@200;300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700;900&family=UnifrakturCook:wght@700&display=swap"
       rel="stylesheet"
+      media="print"
+      onload="this.media='all'"
     />
+    <noscript
+      ><link
+        rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@700;900&family=Inter:wght@200;300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700;900&family=UnifrakturCook:wght@700&display=swap"
+    /></noscript>
     <script src="vendor/three.r128.min.js"></script>
     <script src="vendor/music-tempo.min.js"></script>
     <script src="vendor/gsap.min.js"></script>
@@ -5195,6 +5202,14 @@
                 <span id="update-btn-label" class="update-btn-label"
                   >查看更新页面</span
                 >
+              </button>
+              <button
+                id="update-copy-btn"
+                class="update-copy-btn"
+                type="button"
+                onclick="copySelectedUpdateLink()"
+              >
+                复制链接
               </button>
               <button
                 class="update-secondary-btn"

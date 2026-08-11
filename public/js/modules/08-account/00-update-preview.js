@@ -56,6 +56,30 @@ function currentUpdatePageUrl(preferredIndex) {
   return "";
 }
 
+var UPDATE_SOURCE_STORAGE_KEY = "mineradio-update-download-source-v1";
+
+function saveUpdateDownloadSource(page) {
+  if (!page || !page.url) return;
+  try {
+    localStorage.setItem(
+      UPDATE_SOURCE_STORAGE_KEY,
+      JSON.stringify({ url: page.url, label: page.label || "" }),
+    );
+  } catch (e) {
+    // Storage unavailable; selection simply won't persist.
+  }
+}
+
+function readSavedUpdateDownloadSource() {
+  try {
+    var raw = localStorage.getItem(UPDATE_SOURCE_STORAGE_KEY);
+    var saved = raw && JSON.parse(raw);
+    return saved && saved.url ? saved : null;
+  } catch (e) {
+    return null;
+  }
+}
+
 function initUpdatePreview() {
   renderUpdatePreviewPanel();
   setUpdatePreviewVisible(false);
@@ -141,6 +165,13 @@ function applyLatestUpdateInfo(data) {
     updatePreviewState.downloadPages.length
   ) {
     updatePreviewState.selectedDownloadPageIndex = 0;
+  }
+  var saved = readSavedUpdateDownloadSource();
+  if (saved && saved.url) {
+    var savedIndex = updatePreviewState.downloadPages.findIndex(function (page) {
+      return page.url === saved.url;
+    });
+    if (savedIndex >= 0) updatePreviewState.selectedDownloadPageIndex = savedIndex;
   }
   updatePreviewState.downloadPageUrl =
     release.downloadPageUrl ||
@@ -233,7 +264,7 @@ function renderUpdateDownloadSources() {
     button.className = "update-download-source";
     button.dataset.index = String(index);
     button.textContent = page.label;
-    button.title = "使用" + page.label + "下载";
+    button.title = "打开：" + page.url;
     button.onclick = function () {
       openUpdateDownloadSource(index);
     };
@@ -277,6 +308,10 @@ function syncUpdatePreviewStateClass() {
     btn.disabled =
       isOpening || !updatePreviewState.updateAvailable || !updateUrl;
   }
+  var copyBtn = document.getElementById("update-copy-btn");
+  if (copyBtn) {
+    copyBtn.disabled = !updateUrl || isOpening;
+  }
   var sourceButtons = document.querySelectorAll(
     "#update-download-sources .update-download-source",
   );
@@ -296,14 +331,15 @@ function syncUpdatePreviewStateClass() {
         "无法打开下载页：" + (updatePreviewState.errorReason || "请稍后重试");
     else if (!updatePreviewState.updateAvailable)
       foot.textContent = "当前版本已是最新。";
-    else if (downloadPages.length > 1)
-      foot.textContent = "可选择任一网盘线路；软件不会在本地下载或应用补丁。";
-    else if (updatePreviewState.externalUrl)
+    else if (selectedPage) {
       foot.textContent =
-        "将在浏览器打开网盘下载页；软件不会在本地下载或应用补丁。";
-    else
+        "当前线路：" +
+        selectedPage.label +
+        "；软件不会在本地下载或应用补丁。";
+    } else {
       foot.textContent =
-        "将在浏览器打开 GitHub 更新页面；软件不会在本地下载或应用补丁。";
+        "将在浏览器打开更新页面；软件不会在本地下载或应用补丁。";
+    }
   }
 }
 
@@ -417,6 +453,7 @@ function openUpdateDownloadSource(index) {
   var pages = currentUpdateDownloadPages();
   if (!pages[index]) return;
   updatePreviewState.selectedDownloadPageIndex = index;
+  saveUpdateDownloadSource(pages[index]);
   syncUpdatePreviewStateClass();
   startUpdatePreviewDownload(index);
 }
@@ -435,6 +472,12 @@ async function startUpdatePreviewDownload(preferredIndex) {
     showToast("这个版本还没有可用下载页面");
     return;
   }
+  var pages = currentUpdateDownloadPages();
+  var selectedPage =
+    pages[Number(updatePreviewState.selectedDownloadPageIndex || 0)] ||
+    pages[0] ||
+    null;
+  if (selectedPage) saveUpdateDownloadSource(selectedPage);
   updatePreviewState.status = "opening";
   updatePreviewState.errorReason = "";
   syncUpdatePreviewStateClass();
@@ -453,11 +496,7 @@ async function startUpdatePreviewDownload(preferredIndex) {
     updatePreviewState.status = "opened";
     syncUpdatePreviewStateClass();
     pulseUpdateReady();
-    showToast(
-      updatePreviewState.externalUrl
-        ? "已在浏览器打开网盘下载页"
-        : "已在浏览器打开更新页面",
-    );
+    showToast(selectedPage ? "已打开" + selectedPage.label : "已打开下载页面");
     setTimeout(function () {
       if (updatePreviewState.status === "opened") {
         updatePreviewState.status = "idle";
@@ -505,5 +544,36 @@ function pulseUpdateReady() {
         overwrite: true,
       },
     );
+  }
+}
+
+async function copySelectedUpdateLink() {
+  var pages = currentUpdateDownloadPages();
+  var page =
+    pages[Number(updatePreviewState.selectedDownloadPageIndex || 0)] ||
+    pages[0] ||
+    null;
+  if (!page || !isSafeUpdatePageUrl(page.url)) {
+    showToast("没有可复制的下载链接");
+    return;
+  }
+  try {
+    if (
+      window.desktopWindow &&
+      typeof window.desktopWindow.copyText === "function"
+    ) {
+      var result = await Promise.resolve(window.desktopWindow.copyText(page.url));
+      if (result && result.ok === false) throw new Error("COPY_FAILED");
+    } else if (
+      navigator.clipboard &&
+      typeof navigator.clipboard.writeText === "function"
+    ) {
+      await navigator.clipboard.writeText(page.url);
+    } else {
+      throw new Error("CLIPBOARD_UNAVAILABLE");
+    }
+    showToast("已复制" + page.label + "链接");
+  } catch (e) {
+    showToast("复制失败，请手动复制链接");
   }
 }

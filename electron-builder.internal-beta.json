@@ -42,6 +42,8 @@
     "NOTICE.md",
     "docs/THIRD_PARTY_PORTS.md",
     "package.json",
+    "!public/js/modules/**/*",
+    "!public/vendor/sonic-workshop/preview.gif",
     "!public/index.*.html",
     "public/index.html"
   ],

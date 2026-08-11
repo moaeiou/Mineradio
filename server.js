@@ -805,6 +805,69 @@ function normalizeUpdateDownloadPages(values, fallbackLabel) {
   });
   return pages.slice(0, 6);
 }
+function mirrorHostLabel(mirrorUrl) {
+  try {
+    const host = String(new URL(String(mirrorUrl || "")).hostname || "").replace(
+      /^www\./,
+      "",
+    );
+    return host || "加速镜像";
+  } catch (_) {
+    return "加速镜像";
+  }
+}
+function pickPrimaryInstallerAsset(assets, platform) {
+  const list = Array.isArray(assets) ? assets : [];
+  if (!list.length) return null;
+  const name = (item) =>
+    String((item && (item.name || item.fileName)) || "").toLowerCase();
+  const patterns = {
+    win32: [/\.exe$/i, /\.msi$/i],
+    darwin: [/\.dmg$/i, /\.zip$/i],
+    linux: [
+      /\.appimage$/i,
+      /\.deb$/i,
+      /\.rpm$/i,
+      /\.pacman$/i,
+      /\.tar\.(?:gz|xz)$/i,
+    ],
+  };
+  const preferred = patterns[platform] || [];
+  for (const pattern of preferred) {
+    const found = list.find((item) => pattern.test(name(item)));
+    if (found) return found;
+  }
+  return list[0];
+}
+function mirroredDownloadPagesForSource(sourceUrl) {
+  const candidates = uniqueDownloadCandidates(sourceUrl);
+  return candidates.map((item) => ({
+    label: item.mirrored
+      ? "镜像 · " + mirrorHostLabel(item.url)
+      : "GitHub 直连",
+    url: item.url,
+  }));
+}
+function finalizeUpdateDownloadPages(basePages, sourceUrl, releasePageUrl) {
+  const netdisk = normalizeUpdateDownloadPages(basePages, "网盘下载");
+  const githubSource = safeExternalUpdateUrl(sourceUrl);
+  const githubPages = githubSource
+    ? mirroredDownloadPagesForSource(githubSource)
+    : [];
+  const releasePage = safeExternalUpdateUrl(releasePageUrl)
+    ? [{ label: "GitHub 发布页", url: safeExternalUpdateUrl(releasePageUrl) }]
+    : [];
+  const combined = netdisk.concat(githubPages.slice(0, 4), releasePage);
+  const seen = new Set();
+  const result = [];
+  combined.forEach((page) => {
+    const url = safeExternalUpdateUrl(page.url);
+    if (!url || seen.has(url.toLowerCase())) return;
+    seen.add(url.toLowerCase());
+    result.push({ label: page.label, url });
+  });
+  return result.slice(0, 6);
+}
 function extractReleaseDownloadPages(body) {
   const raw = String(body || "");
   const pages = [];
@@ -855,16 +918,21 @@ function normalizeManifestUpdateInfo(data) {
       data.downloadUrl ||
       "",
   );
-  const downloadPages = normalizeUpdateDownloadPages(
+  const baseDownloadPages = normalizeUpdateDownloadPages(
     release.downloadPages || data.downloadPages || [],
     "网盘下载",
   );
   if (
     legacyExternalUrl &&
-    !downloadPages.some((page) => page.url === legacyExternalUrl)
+    !baseDownloadPages.some((page) => page.url === legacyExternalUrl)
   ) {
-    downloadPages.unshift({ label: "网盘下载", url: legacyExternalUrl });
+    baseDownloadPages.unshift({ label: "网盘下载", url: legacyExternalUrl });
   }
+  const downloadPages = finalizeUpdateDownloadPages(
+    baseDownloadPages,
+    htmlUrl,
+    htmlUrl,
+  );
   const externalUrl = downloadPages.length
     ? downloadPages[0].url
     : legacyExternalUrl;
@@ -1207,6 +1275,7 @@ function parseLatestYmlUpdateInfo(text, reason) {
     normalizeVersion(yamlScalar(text, "version") || APP_VERSION) || APP_VERSION;
   const releaseDate = yamlScalar(text, "releaseDate");
   const htmlUrl = `https://github.com/${UPDATE_CONFIG.owner}/${UPDATE_CONFIG.repo}/releases/tag/v${latestVersion}`;
+  const downloadPages = finalizeUpdateDownloadPages([], htmlUrl, htmlUrl);
   return {
     configured: true,
     preview: false,
@@ -1221,7 +1290,7 @@ function parseLatestYmlUpdateInfo(text, reason) {
       htmlUrl,
       externalUrl: "",
       downloadPageUrl: htmlUrl,
-      downloadPages: [],
+      downloadPages,
       downloadUrl: "",
       asset: null,
       patch: null,
@@ -1274,7 +1343,20 @@ async function fetchLatestUpdateInfo() {
       normalizeVersion(data.tag_name || data.name || APP_VERSION) ||
       APP_VERSION;
     const htmlUrl = safeExternalUpdateUrl(data.html_url || "");
-    const downloadPages = extractReleaseDownloadPages(data.body);
+    const primaryAsset = pickPrimaryInstallerAsset(
+      data.assets,
+      process.platform,
+    );
+    const primaryAssetUrl =
+      primaryAsset &&
+      safeExternalUpdateUrl(
+        primaryAsset.browser_download_url || primaryAsset.url || "",
+      );
+    const downloadPages = finalizeUpdateDownloadPages(
+      extractReleaseDownloadPages(data.body),
+      primaryAssetUrl || htmlUrl,
+      htmlUrl,
+    );
     const externalUrl = downloadPages.length ? downloadPages[0].url : "";
     const downloadPageUrl = externalUrl || htmlUrl;
     const notes = extractReleaseNotes(data.body).length

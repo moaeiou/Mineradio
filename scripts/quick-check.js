@@ -293,7 +293,9 @@ function parseCombinedIndexModules() {
   const loader = fs.readFileSync(loaderPath, "utf8");
   const match = loader.match(/const modulePaths = \[([\s\S]*?)\];/);
   if (!match) fail("modulePaths not found in public/js/index-loader.js");
-  const modulePaths = [...match[1].matchAll(/'([^']+)'/g)].map((m) => m[1]);
+  const modulePaths = [...match[1].matchAll(/["']([^"']+)["']/g)].map(
+    (m) => m[1],
+  );
   const combined = modulePaths
     .map((modulePath) =>
       fs.readFileSync(path.join(publicDir, modulePath), "utf8"),

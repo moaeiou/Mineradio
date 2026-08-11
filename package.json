@@ -1,24 +1,25 @@
 {
   "name": "Mineradio",
   "productName": "Mineradio",
-  "version": "2026.2.14",
+  "version": "2026.2.15",
   "description": "一款以电影镜头、粒子视觉和歌词舞台为核心的沉浸式音乐播放器。",
   "author": "Mineradio",
   "license": "GPL-3.0-only",
   "main": "desktop/main.js",
   "private": true,
   "scripts": {
-    "dev": "electron .",
+    "bundle": "node scripts/bundle-renderer.mjs",
+    "dev": "node scripts/bundle-renderer.mjs && electron .",
     "format": "prettier . --write",
-    "build:linux:pacman": "electron-builder --linux pacman",
-    "build:linux:rpm": "electron-builder --linux rpm",
-    "build:linux:AppImage": "electron-builder --linux AppImage",
-    "build:linux:deb": "electron-builder --linux deb",
-    "build:linux:dir": "electron-builder --linux dir",
-    "build:macos": "electron-builder --mac dmg",
-    "build:macos:dir": "electron-builder --mac dir",
-    "build:windows": "electron-builder --win nsis",
-    "build:windows:dir": "electron-builder --win dir"
+    "build:linux:pacman": "node scripts/bundle-renderer.mjs && electron-builder --linux pacman",
+    "build:linux:rpm": "node scripts/bundle-renderer.mjs && electron-builder --linux rpm",
+    "build:linux:AppImage": "node scripts/bundle-renderer.mjs && electron-builder --linux AppImage",
+    "build:linux:deb": "node scripts/bundle-renderer.mjs && electron-builder --linux deb",
+    "build:linux:dir": "node scripts/bundle-renderer.mjs && electron-builder --linux dir",
+    "build:macos": "node scripts/bundle-renderer.mjs && electron-builder --mac dmg",
+    "build:macos:dir": "node scripts/bundle-renderer.mjs && electron-builder --mac dir",
+    "build:windows": "node scripts/bundle-renderer.mjs && electron-builder --win nsis",
+    "build:windows:dir": "node scripts/bundle-renderer.mjs && electron-builder --win dir"
   },
   "build": {
     "appId": "mo.mineradio",
@@ -51,6 +52,8 @@
       "!desktop/wallpaper-preload.js",
       "!public/wallpaper.html",
       "!public/index.*.html",
+      "!public/js/modules/**/*",
+      "!public/vendor/sonic-workshop/preview.gif",
       "public/index.html"
     ],
     "asar": true,
@@ -129,9 +132,6 @@
   },
   "dependencies": {
     "NeteaseCloudMusicApi": "^4.32.0",
-    "gsap": "^3.15.0",
-    "mpg123-decoder": "^1.0.3",
-    "prettier": "^3.9.6",
     "qrcode": "^1.5.4"
   },
   "overrides": {
@@ -143,8 +143,12 @@
     "dotenv": "17.4.2",
     "electron": "^43.3.0",
     "electron-builder": "^26.15.7",
+    "gsap": "^3.15.0",
+    "mpg123-decoder": "^1.0.3",
+    "prettier": "^3.9.6",
     "rcedit": "^5.0.2",
     "strtok3": "10.3.5",
+    "terser": "^5.49.2",
     "token-types": "6.1.2"
   },
   "packageManager": "pnpm@11.21.0+sha512.521705bce689924eac72f5a3587122f362689ef6571e55ba80076fd637c11132ecffada26fad4ea79c485bfddbfd3d5a2a5b05805a77e893de71ec8a6cca3bb1"
