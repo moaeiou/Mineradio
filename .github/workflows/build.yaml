@@ -82,7 +82,7 @@ jobs:
 
   sync:
     needs: build
-    runs-os: ubuntu-latest
+    runs-on: ubuntu-latest
     steps:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
