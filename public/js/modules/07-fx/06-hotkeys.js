@@ -27,6 +27,18 @@ function saveHotkeySettings() {
     );
   } catch (e) {}
 }
+function hotkeyGlobalOptIn() {
+  try {
+    return localStorage.getItem(HOTKEY_GLOBAL_OPT_IN_STORE_KEY) === "1";
+  } catch (e) {
+    return false;
+  }
+}
+function setHotkeyGlobalOptIn() {
+  try {
+    localStorage.setItem(HOTKEY_GLOBAL_OPT_IN_STORE_KEY, "1");
+  } catch (e) {}
+}
 function hotkeyActionMeta(actionKey) {
   for (var i = 0; i < HOTKEY_ACTIONS.length; i++) {
     if (HOTKEY_ACTIONS[i].key === actionKey) return HOTKEY_ACTIONS[i];
@@ -352,6 +364,7 @@ function openHotkeySettings() {
   modal.classList.add("show");
   modal.setAttribute("data-scope", modal.getAttribute("data-scope") || "local");
   renderHotkeySettings();
+  setHotkeyGlobalOptIn();
   registerGlobalHotkeys();
 }
 function closeHotkeySettings() {
@@ -374,7 +387,10 @@ function setHotkeyBinding(action, scope, value) {
   hotkeySettings[scope][action] = value || "";
   saveHotkeySettings();
   renderHotkeySettings();
-  if (scope === "global") registerGlobalHotkeys();
+  if (scope === "global") {
+    setHotkeyGlobalOptIn();
+    registerGlobalHotkeys();
+  }
 }
 function resetHotkeyBinding(action, scope) {
   var meta = hotkeyActionMeta(action);
@@ -430,7 +446,11 @@ function bindHotkeySettings() {
       });
     }
   }
-  registerGlobalHotkeys();
+  // Do not register global shortcuts on startup: on Wayland this makes the
+  // desktop portal pop the "register shortcuts" dialog. Register only after
+  // the user opts in by opening the hotkey settings dialog or editing a
+  // global binding.
+  if (hotkeyGlobalOptIn()) registerGlobalHotkeys();
 }
 document.addEventListener(
   "keydown",

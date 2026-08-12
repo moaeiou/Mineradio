@@ -35,7 +35,7 @@ Mineradio 是一款以电影镜头、粒子视觉和歌词舞台为核心的沉�
 
 ### 下载
 
-[GitHub Release](https://github.com/moaeiou/Mineradio/releases)
+[GitHub Release](https://github.com/moaeiou/mineradio/releases)
 
 ## 🛠 开发和自编译
 
@@ -48,8 +48,8 @@ Mineradio 是一款以电影镜头、粒子视觉和歌词舞台为核心的沉�
 确保你已经有了pnpm nodejs和一个可以轻松连接GitHub的网络
 
 ```
-git clone https://github.com/moaeiou/Mineradio.git
-cd Mineradio
+git clone https://github.com/moaeiou/mineradio.git
+cd mineradio
 pnpm install
 ```
 
@@ -131,7 +131,7 @@ MINERADIO_BEAT_CACHE_DIR=/path/to/beatmaps pnpm dev
 
 Mineradio 由 [XxHuberrr](https://github.com/XxHuberrr) 主要设计与打造。
 
-emily 作为早期视觉底层想法与 `emily` 视觉预设改进方向的共创者和灵感来源之一，特此感谢。
+emily 作为早期视觉底层想法与 `emily 视觉预设改进方向`的共创者和灵感来源之一，特此感谢。
 
 同时感谢小天才e宝、应春日、锋将军、軌跡、林中、骊、风痕、花椰菜🥦、MidQwerty在早期体验、测试反馈和发布准备中的帮助。
 
@@ -153,8 +153,8 @@ Mineradio 不是任何音乐集团、公司的官方客户端，也不隶属于�
 
 Copyright (C) 2026 MoAEIOU & XxHuberrr
 
-本项目采用 GPL-3.0 授权。详见 [LICENSE](https://github.com/XxHuberrr/Mineradio/blob/main/LICENSE)
-
 原作者为[XxHuberrr](https://github.com/XxHuberrr)
+
+本项目采用 GPL-3.0 授权。详见 [LICENSE](https://github.com/XxHuberrr/Mineradio/blob/main/LICENSE)
 
 MR Logo、Mineradio 名称、界面视觉设计与原创视觉表达归作者所有；第三方依赖和第三方服务分别遵循其各自授权与服务条款。

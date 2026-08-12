@@ -3,7 +3,11 @@
 const fs = require("fs");
 const path = require("path");
 
-const GPU_BACKEND_STATE_VERSION = 1;
+// v2: Electron disables Chromium's Vulkan feature by default, so the old
+// "vulkan-not-active" failure cache (written without the ANGLE/Vulkan feature
+// flags) must not keep forcing the GL fallback. Bumping the version discards
+// stale cached failures while keeping the file itself intact.
+const GPU_BACKEND_STATE_VERSION = 2;
 const VULKAN_RETRY_MS = 7 * 24 * 60 * 60 * 1000;
 const VALID_BACKENDS = new Set(["automatic", "vulkan", "d3d11", "gl"]);
 
@@ -128,7 +132,15 @@ function selectGpuBackend(options = {}) {
 function gpuBackendSwitches(backend) {
   const normalized = normalizeGpuBackend(backend) || "automatic";
   if (normalized === "automatic") return [];
-  if (normalized === "vulkan") return [["use-angle", "vulkan"]];
+  if (normalized === "vulkan")
+    return [
+      // ANGLE on top of Vulkan needs the ANGLE GL implementation selected,
+      // the ANGLE Vulkan backend, and Chromium's Vulkan features enabled
+      // (Electron ships them disabled by default; see electron#40929).
+      ["use-gl", "angle"],
+      ["use-angle", "vulkan"],
+      ["enable-features", "Vulkan,VulkanFromANGLE,DefaultANGLEVulkan"],
+    ];
   return [["use-angle", normalized]];
 }
 

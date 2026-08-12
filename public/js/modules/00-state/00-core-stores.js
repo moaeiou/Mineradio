@@ -289,6 +289,11 @@ var FX_FAB_AUTO_HIDE_STORE_KEY = "mineradio-fx-fab-auto-hide-v1";
 var CONTROLS_AUTO_HIDE_STORE_KEY = "mineradio-controls-auto-hide-v1";
 var FREE_CAMERA_STORE_KEY = "mineradio-free-camera-v1";
 var HOTKEY_SETTINGS_STORE_KEY = "mineradio-hotkey-settings-v1";
+// Global shortcuts are only registered with the system after the user opens
+// the hotkey settings dialog (or edits a global binding). Without this opt-in
+// marker, startup would immediately ask the desktop portal to register all
+// default global shortcuts and pop the "register shortcuts" dialog.
+var HOTKEY_GLOBAL_OPT_IN_STORE_KEY = "mineradio-hotkey-global-opt-in-v1";
 var VISUAL_GUIDE_SEEN_STORE_KEY = "mineradio-visual-guide-seen-v2";
 var CLOSE_BEHAVIOR_STORE_KEY = "mineradio-close-behavior-v1";
 var LAST_PLAYBACK_STORE_KEY = "mineradio-last-playback-v1";

@@ -2617,6 +2617,54 @@ async function getGpuDiagnostics() {
   };
 }
 
+async function collectGpuFailureDiagnostics() {
+  const status = (() => {
+    try {
+      return app.getGPUFeatureStatus();
+    } catch (e) {
+      return { error: e.message || String(e) };
+    }
+  })();
+  let basicInfo = null;
+  try {
+    basicInfo = await app.getGPUInfo("basic");
+  } catch (e) {
+    basicInfo = { error: e.message || String(e) };
+  }
+  const device = (basicInfo && basicInfo.gpuDevice) || {};
+  const aux = (basicInfo && basicInfo.auxAttributes) || {};
+  return {
+    featureStatus: {
+      vulkan: status.vulkan || "",
+      webgl: status.webgl || "",
+      webgl2: status.webgl2 || "",
+      gpuCompositing: status.gpu_compositing || "",
+    },
+    gpu: {
+      vendorId: device.vendorId || "",
+      deviceId: device.deviceId || "",
+      glRenderer: aux.glRenderer || "",
+      glVendor: aux.glVendor || "",
+      glVersion: aux.glVersion || "",
+      driverVendor: aux.driverVendor || "",
+      driverVersion: aux.driverVersion || "",
+      glImplementationParts: aux.glImplementationParts || "",
+      hardwareSupportsVulkan: aux.hardwareSupportsVulkan,
+    },
+    session: {
+      xdgSessionType: process.env.XDG_SESSION_TYPE || "",
+      waylandDisplay: process.env.WAYLAND_DISPLAY || "",
+      display: process.env.DISPLAY || "",
+    },
+    switches: {
+      angle: ACTIVE_GPU_BACKEND.backend,
+      preferred: ACTIVE_GPU_BACKEND.preferred,
+      fallback: ACTIVE_GPU_BACKEND.fallback,
+      selectionSource: ACTIVE_GPU_BACKEND.source,
+    },
+  };
+}
+
 function clearGpuBackendWatchdog() {
   if (!gpuBackendWatchdogTimer) return;
   clearTimeout(gpuBackendWatchdogTimer);
@@ -2687,7 +2735,7 @@ async function recordGpuBackendSuccess(detail = {}) {
   console.log(`[GPUBackend] ${ACTIVE_GPU_BACKEND.backend} renderer ready`);
 }
 
-function requestGpuBackendFallback(reason, detail = "") {
+async function requestGpuBackendFallback(reason, detail = "") {
   if (
     gpuBackendFallbackStarted ||
     appQuitting ||
@@ -2698,6 +2746,19 @@ function requestGpuBackendFallback(reason, detail = "") {
   gpuBackendFallbackStarted = true;
   clearGpuBackendWatchdog();
   const safeReason = String(reason || "vulkan-failed").slice(0, 160);
+  let diagnostics = null;
+  try {
+    diagnostics = await Promise.race([
+      collectGpuFailureDiagnostics(),
+      new Promise((resolve) => setTimeout(() => resolve(null), 3000)),
+    ]);
+  } catch (e) {
+    diagnostics = { error: e.message || String(e) };
+  }
+  const diagnosticsText = diagnostics
+    ? JSON.stringify(diagnostics)
+    : "unavailable";
+  console.warn(`[GPUBackend] Vulkan diagnostics: ${diagnosticsText}`);
   writeGpuBackendState(GPU_BACKEND_STATE_FILE, {
     ...readGpuBackendState(GPU_BACKEND_STATE_FILE),
     runtimeKey: GPU_BACKEND_RUNTIME_KEY,
@@ -2705,6 +2766,7 @@ function requestGpuBackendFallback(reason, detail = "") {
     vulkanFailedAt: Date.now(),
     vulkanFailureReason: safeReason,
     vulkanFailureDetail: String(detail || "").slice(0, 500),
+    vulkanDiagnostics: diagnostics,
   });
   console.warn(
     `[GPUBackend] Vulkan failed (${safeReason}); restarting with ${ACTIVE_GPU_BACKEND.fallback}.`,
