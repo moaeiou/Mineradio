@@ -73,12 +73,12 @@ jobs:
             - Fixes and improvements
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      
+
       - name: Sanitize artifact name
         id: fuckname
         shell: bash
         run: echo "name=$(echo '${{ matrix.tag }}' | tr ':' '-')" >> "$GITHUB_OUTPUT"
-      
+
       - name: Upload artifact
         uses: actions/upload-artifact@main
         with:

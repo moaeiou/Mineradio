@@ -109,8 +109,7 @@
 
   function injectScriptText(text) {
     const script = document.createElement("script");
-    script.text =
-      text + "\n//# sourceURL=mineradio-index-modules.js\n";
+    script.text = text + "\n//# sourceURL=mineradio-index-modules.js\n";
     document.currentScript.parentNode.insertBefore(
       script,
       document.currentScript.nextSibling,
@@ -121,11 +120,7 @@
   // scripts/bundle-renderer.mjs). Fall back to per-module sources so a stale or
   // missing bundle never blocks development.
   const bundleRequest = new XMLHttpRequest();
-  bundleRequest.open(
-    "GET",
-    "js/index.bundle.js?v=" + moduleCacheBust,
-    false,
-  );
+  bundleRequest.open("GET", "js/index.bundle.js?v=" + moduleCacheBust, false);
   try {
     bundleRequest.send(null);
   } catch (e) {

@@ -807,10 +807,9 @@ function normalizeUpdateDownloadPages(values, fallbackLabel) {
 }
 function mirrorHostLabel(mirrorUrl) {
   try {
-    const host = String(new URL(String(mirrorUrl || "")).hostname || "").replace(
-      /^www\./,
-      "",
-    );
+    const host = String(
+      new URL(String(mirrorUrl || "")).hostname || "",
+    ).replace(/^www\./, "");
     return host || "加速镜像";
   } catch (_) {
     return "加速镜像";

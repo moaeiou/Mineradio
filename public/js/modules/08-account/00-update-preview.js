@@ -168,10 +168,13 @@ function applyLatestUpdateInfo(data) {
   }
   var saved = readSavedUpdateDownloadSource();
   if (saved && saved.url) {
-    var savedIndex = updatePreviewState.downloadPages.findIndex(function (page) {
-      return page.url === saved.url;
-    });
-    if (savedIndex >= 0) updatePreviewState.selectedDownloadPageIndex = savedIndex;
+    var savedIndex = updatePreviewState.downloadPages.findIndex(
+      function (page) {
+        return page.url === saved.url;
+      },
+    );
+    if (savedIndex >= 0)
+      updatePreviewState.selectedDownloadPageIndex = savedIndex;
   }
   updatePreviewState.downloadPageUrl =
     release.downloadPageUrl ||
@@ -333,9 +336,7 @@ function syncUpdatePreviewStateClass() {
       foot.textContent = "当前版本已是最新。";
     else if (selectedPage) {
       foot.textContent =
-        "当前线路：" +
-        selectedPage.label +
-        "；软件不会在本地下载或应用补丁。";
+        "当前线路：" + selectedPage.label + "；软件不会在本地下载或应用补丁。";
     } else {
       foot.textContent =
         "将在浏览器打开更新页面；软件不会在本地下载或应用补丁。";
@@ -562,7 +563,9 @@ async function copySelectedUpdateLink() {
       window.desktopWindow &&
       typeof window.desktopWindow.copyText === "function"
     ) {
-      var result = await Promise.resolve(window.desktopWindow.copyText(page.url));
+      var result = await Promise.resolve(
+        window.desktopWindow.copyText(page.url),
+      );
       if (result && result.ok === false) throw new Error("COPY_FAILED");
     } else if (
       navigator.clipboard &&
