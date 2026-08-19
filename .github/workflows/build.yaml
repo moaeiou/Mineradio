@@ -69,8 +69,10 @@ jobs:
           files: ${{ matrix.pas }}
           fail_on_unmatched_files: true
           body: |
-            # 📝 Release Note
-            - Fixes and improvements
+            # 📝 更新日志
+            - Electron到43.4.1
+            ## ⚠️ 最后一版！
+            我不会再更新了，因为用的人很少。
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

@@ -4,6 +4,8 @@
 
 Mineradio 是一款以电影镜头、粒子视觉和歌词舞台为核心的沉浸式音乐播放器。
 
+该项目已停止维护，若要接收更新请转到<https://github.com/XxHuberrr/Mineradio>。
+
 ## 🚀 特性（相比原版）
 
 这是<https://github.com/XxHuberrr/Mineradio>的修改版
